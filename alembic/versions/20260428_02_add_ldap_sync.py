@@ -16,14 +16,19 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    is_pg = bind.dialect.name == "postgresql"
+    true_literal = sa.text("true") if is_pg else sa.text("1")
+    false_literal = sa.text("false") if is_pg else sa.text("0")
+
     op.create_table(
         "ldap_config",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("provider_type", sa.String(32), nullable=False, server_default="generic"),
         sa.Column("host", sa.String(255), nullable=False),
         sa.Column("port", sa.Integer(), nullable=False, server_default="636"),
-        sa.Column("use_ssl", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("start_tls", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("use_ssl", sa.Boolean(), nullable=False, server_default=true_literal),
+        sa.Column("start_tls", sa.Boolean(), nullable=False, server_default=false_literal),
         sa.Column("bind_dn", sa.String(512), nullable=True),
         sa.Column("encrypted_bind_password", sa.Text(), nullable=True),
         sa.Column("base_dn", sa.String(512), nullable=False),
@@ -38,8 +43,8 @@ def upgrade() -> None:
         sa.Column("analyst_group_dns", sa.Text(), nullable=False, server_default=""),
         sa.Column("viewer_group_dns", sa.Text(), nullable=False, server_default=""),
         sa.Column("default_role", sa.String(32), nullable=False, server_default="viewer"),
-        sa.Column("auto_disable_missing", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("auto_disable_missing", sa.Boolean(), nullable=False, server_default=false_literal),
+        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=false_literal),
         sa.Column("last_sync_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )

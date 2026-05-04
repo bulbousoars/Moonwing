@@ -194,14 +194,24 @@ def worker_harness(tmp_path):
 # API tests
 # ---------------------------------------------------------------------------
 
-def test_api_accepts_run_request(tmp_path):
+def test_api_accepts_run_request(tmp_path, monkeypatch):
     """POST /api/runs creates a queued run when entities exist in DB."""
+    from moonwing.api import deps as deps_module
+    from moonwing.api import main as main_module
     from moonwing.api.deps import get_db
+    from moonwing.services.auth import create_session_token
+
+    monkeypatch.setenv("MOONWING_SESSION_SECRET", "test-session-secret")
 
     sf = _session_factory(tmp_path)
     session = sf()
-    # Seed required entities
-    user = User(email="api@test.com", display_name="API Test")
+    # Seed required entities (admin role + active so auth + permissions pass)
+    user = User(
+        email="api@test.com",
+        display_name="API Test",
+        role="admin",
+        status="active",
+    )
     session.add(user)
     session.flush()
     cred = Credential(owner_user_id=user.id, scope="user", provider="openai", display_name="K", secret_ref="vault://k")
@@ -220,8 +230,12 @@ def test_api_accepts_run_request(tmp_path):
             s.close()
 
     app.dependency_overrides[get_db] = _override_db
+    monkeypatch.setattr(deps_module, "_get_session_factory", lambda: sf)
+    monkeypatch.setattr(main_module, "_get_session_factory", lambda: sf)
+    token = create_session_token(ids["user"], "admin", secret="test-session-secret")
     try:
         client = TestClient(app)
+        client.cookies.set("moonwing_session", token)
         response = client.post(
             "/api/runs",
             json={

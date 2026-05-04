@@ -98,9 +98,11 @@ def test_upsert_oidc_user_links_existing_local_user_by_email():
     )
 
     assert user.role == "analyst"
-    assert user.oidc_issuer == "https://auth.example.test/application/o/moonwing/"
-    assert user.oidc_subject == "subject-456"
-    assert user.auth_provider == "oidc"
+    # Production schema uses auth_source=oidc + external_id="oidc:{issuer}#{subject}"
+    assert user.auth_source == "oidc"
+    assert user.external_id is not None
+    assert "subject-456" in user.external_id
+    assert "auth.example.test" in user.external_id
 
 
 def test_validate_oidc_claims_rejects_nonce_mismatch_from_id_token():

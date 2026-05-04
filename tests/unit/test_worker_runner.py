@@ -30,7 +30,8 @@ def test_build_command_for_openai_source_hunt():
     )
 
     assert command[0] == "codex"
-    assert "--model" in command
+    # codex uses -m for model selection
+    assert "-m" in command
     assert "gpt-4o" in command
     assert "https://github.com/example/repo.git" in command[-1]
 
@@ -45,7 +46,8 @@ def test_build_command_for_ollama():
     )
 
     assert command[0] == "codex"
-    assert "--provider" in command
+    # codex routes ollama via --local-provider
+    assert "--local-provider" in command
     assert "ollama" in command
 
 

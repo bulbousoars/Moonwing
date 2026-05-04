@@ -16,10 +16,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("is_bootstrap", sa.Boolean(), nullable=False, server_default=sa.text("false")))
-    op.add_column("users", sa.Column("must_change_password", sa.Boolean(), nullable=False, server_default=sa.text("false")))
-    op.alter_column("users", "is_bootstrap", server_default=None)
-    op.alter_column("users", "must_change_password", server_default=None)
+    bind = op.get_bind()
+    is_pg = bind.dialect.name == "postgresql"
+    false_literal = sa.text("false") if is_pg else sa.text("0")
+    op.add_column("users", sa.Column("is_bootstrap", sa.Boolean(), nullable=False, server_default=false_literal))
+    op.add_column("users", sa.Column("must_change_password", sa.Boolean(), nullable=False, server_default=false_literal))
+    if is_pg:
+        op.alter_column("users", "is_bootstrap", server_default=None)
+        op.alter_column("users", "must_change_password", server_default=None)
 
 
 def downgrade() -> None:

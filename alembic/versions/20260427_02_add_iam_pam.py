@@ -17,14 +17,21 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    is_pg = bind.dialect.name == "postgresql"
+    json_type = postgresql.JSONB(astext_type=sa.Text()) if is_pg else sa.JSON()
+    json_default = sa.text("'{}'::jsonb") if is_pg else sa.text("'{}'")
+    false_literal = sa.text("false") if is_pg else sa.text("0")
+
     op.add_column("users", sa.Column("password_hash", sa.Text(), nullable=True))
     op.add_column("users", sa.Column("role", sa.String(length=32), nullable=False, server_default="viewer"))
     op.add_column("users", sa.Column("status", sa.String(length=32), nullable=False, server_default="active"))
-    op.add_column("users", sa.Column("is_service_account", sa.Boolean(), nullable=False, server_default=sa.text("false")))
+    op.add_column("users", sa.Column("is_service_account", sa.Boolean(), nullable=False, server_default=false_literal))
     op.add_column("users", sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True))
-    op.alter_column("users", "role", server_default=None)
-    op.alter_column("users", "status", server_default=None)
-    op.alter_column("users", "is_service_account", server_default=None)
+    if is_pg:
+        op.alter_column("users", "role", server_default=None)
+        op.alter_column("users", "status", server_default=None)
+        op.alter_column("users", "is_service_account", server_default=None)
 
     op.create_table(
         "service_account_tokens",
@@ -39,7 +46,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_service_account_tokens_user_id"), "service_account_tokens", ["user_id"], unique=False)
-    op.alter_column("service_account_tokens", "status", server_default=None)
+    if is_pg:
+        op.alter_column("service_account_tokens", "status", server_default=None)
 
     op.create_table(
         "audit_events",
@@ -49,15 +57,16 @@ def upgrade() -> None:
         sa.Column("resource_type", sa.String(length=80), nullable=False),
         sa.Column("resource_id", sa.String(length=255), nullable=True),
         sa.Column("outcome", sa.String(length=32), nullable=False, server_default="success"),
-        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("metadata_json", json_type, nullable=False, server_default=json_default),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_audit_events_action"), "audit_events", ["action"], unique=False)
     op.create_index(op.f("ix_audit_events_actor_user_id"), "audit_events", ["actor_user_id"], unique=False)
-    op.alter_column("audit_events", "outcome", server_default=None)
-    op.alter_column("audit_events", "metadata_json", server_default=None)
+    if is_pg:
+        op.alter_column("audit_events", "outcome", server_default=None)
+        op.alter_column("audit_events", "metadata_json", server_default=None)
 
     op.create_table(
         "privileged_access_grants",
@@ -75,7 +84,8 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_privileged_access_grants_permission"), "privileged_access_grants", ["permission"], unique=False)
     op.create_index(op.f("ix_privileged_access_grants_user_id"), "privileged_access_grants", ["user_id"], unique=False)
-    op.alter_column("privileged_access_grants", "status", server_default=None)
+    if is_pg:
+        op.alter_column("privileged_access_grants", "status", server_default=None)
 
 
 def downgrade() -> None:

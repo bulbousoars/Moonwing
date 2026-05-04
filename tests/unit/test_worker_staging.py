@@ -233,9 +233,9 @@ class TestStageRun:
             session=session, run_id=run.id, object_store=object_store,
         )
 
-        # Credential provider is openai → codex CLI
+        # Credential provider is openai → codex CLI; codex uses -m for model
         assert staged.command[0] == "codex"
-        assert "--model" in staged.command
+        assert "-m" in staged.command
 
     def test_stage_run_builds_cli_command_for_source_hunt(
         self, session, object_store, seed_user, seed_credential, seed_runtime_profile,
