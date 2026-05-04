@@ -59,8 +59,10 @@ pytest -v
 
 ## Deployment
 
-Two supported ways. Both replace the prior practice of `scp`-ing into the
-production venv's `site-packages`.
+Two supported ways **on the production homelab VM** (`192.168.1.215`). Both
+replace the prior practice of `scp`-ing into the production venv's
+`site-packages`. **Docker Compose is not used for endpoint sensors** — sensors
+roll out via the Ansible role and `deploy/windows/install-moonwing-sensor.ps1`.
 
 ### Ansible (preferred)
 
@@ -85,6 +87,26 @@ Both run the same five steps:
 
 See [`deploy/scripts/README.md`](deploy/scripts/README.md) for the full
 contract and migration story from the legacy `scp` workflow.
+
+### Docker Compose (optional; not VM 215’s default topology)
+
+[`docker-compose.yml`](docker-compose.yml) is **two things**:
+
+1. **Infrastructure only (default compose services)** — `postgres`, `redis`,
+   and `minio`. This matches local development in [Local development](#local-development): run the API and worker on the host with a venv while dependencies live in Docker.
+2. **Full manager in containers (`app` profile)** — `moonwing-api` and
+   `moonwing-worker` images built from the repo [`Dockerfile`](Dockerfile):
+
+   ```bash
+   docker compose --profile app up -d --build
+   ```
+
+   Useful for demos, CI smoke checks, or a greenfield Docker host. On
+   **`secops` today**, Postgres/Redis/MinIO run under Docker while **API +
+   worker run under systemd**, so production rollout stays **Ansible or
+   `deploy-manager.ps1`**, not the Compose `app` profile unless you explicitly
+   choose to standardize on containers there (migrations, secrets, and
+   restarts become your Compose/ops workflow instead of the steps above).
 
 ### Sensor rollout
 
