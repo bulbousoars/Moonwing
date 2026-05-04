@@ -31,7 +31,10 @@
   <p class="text-muted" style="margin-top:0.75rem">
     Treat the enrollment token like a bootstrap secret: anyone who has it can register a sensor
     against this manager. Rotate it by changing <code>MOONWING_SENSOR_ENROLLMENT_TOKEN</code>
-    and restarting the API.
+    and restarting the API. Use one <strong>canonical manager URL</strong> for every user and endpoint (HTTPS + DNS strongly recommended).
+  </p>
+  <p class="text-muted">
+    Fleet automation can copy this URL plus the enrollment token into the thin installers shipped at <code>deploy/sensors/</code> alongside this repository—they match these downloads behaviorally.
   </p>
 </div>
 
@@ -51,7 +54,11 @@
       <a href="/sensors/install/linux.sh" class="btn btn-primary" download>Download installer</a>
     </p>
     <div style="margin-top:0.75rem">
-      <strong>One-liner</strong>
+      <p class="text-muted" style="margin:0 0 0.35rem 0">
+        <strong>Interactive / browser</strong> — this URL requires a logged-in session. For fleet rollout use
+        <code>deploy/sensors/install-sensor.sh</code> with <code>MOONWING_MANAGER_URL</code> + <code>MOONWING_ENROLLMENT_TOKEN</code> copied from above.
+      </p>
+      <strong>One-liner</strong> (same login as this page)
       <pre class="json-view" style="white-space:pre-wrap">curl -fsSL '{{ manager_url }}/sensors/install/linux.sh' | sudo bash</pre>
     </div>
   </div>
@@ -71,6 +78,9 @@
       <a href="/sensors/install/windows.ps1" class="btn btn-primary" download>Download installer</a>
     </p>
     <div style="margin-top:0.75rem">
+      <p class="text-muted" style="margin:0 0 0.35rem 0">
+        Same caveats as Linux: use <code>deploy/sensors/install-sensor.ps1</code> when you need token + URL automation.
+      </p>
       <strong>One-liner (elevated PowerShell)</strong>
       <pre class="json-view" style="white-space:pre-wrap">iwr '{{ manager_url }}/sensors/install/windows.ps1' -UseBasicParsing | iex</pre>
     </div>

@@ -17,9 +17,8 @@ deploy on hardware or a VM you operate.
   grants, SMTP / LDAP / OIDC config, etc.
 - **Redis** — placeholder queue backend (current dispatch is in-process).
 - **MinIO** — S3-compatible artifact store with provenance tracking.
-- **Endpoint sensors (`moonwing_sensor`)** — Python agent installed on Linux
-  via Ansible role and on Windows via PowerShell installer. Manager-side
-  policies live in Postgres; agents pull tasks and post events.
+- **Endpoint sensors (`moonwing_sensor`)** — Enroll Linux or Windows hosts against
+  a manager reachable at a **stable DNS name or IP**; see [Sensor rollout](#sensor-rollout).
 
 ## Repository layout
 
@@ -28,9 +27,10 @@ src/moonwing/                FastAPI app, worker, services, schemas, models
 src/moonwing_sensor/         Endpoint agent package
 alembic/                     Schema migrations (see alembic/versions)
 tests/                       Foundation tests (unit/integration) + feature tests
-deploy/ansible/              moonwing_manager + moonwing_sensor roles, site.yml
-deploy/scripts/              PowerShell quick-deploy (no Ansible required)
-deploy/windows/              Windows sensor installer
+deploy/ansible/              Optional moonwing_manager + moonwing_sensor roles, site.yml
+deploy/scripts/              Optional PowerShell host sync deploy (venv + systemd)
+deploy/sensors/              In-repo Linux / Windows sensor installers (Compose-friendly)
+deploy/windows/              Alternate Windows installer (bundles repo Python sensor)
 docs/                        Design specs, plans, sensor rollout notes
 ```
 
@@ -62,69 +62,87 @@ developer convenience — change passwords and URLs for anything beyond local us
 
 ## Deployment
 
-Supported patterns for deploying the manager (API + worker) use a Git checkout
-(or rsync-equivalent sync) plus `pip install -e .`, migrations, and service
-restart. **Docker Compose does not ship endpoint sensors** — use the Ansible
-sensor role or `deploy/windows/install-moonwing-sensor.ps1`.
+**Recommended operators path:** clone or pull tagged releases from this repo, run
+the **Docker Compose stack** for the manager, put a **stable DNS name or routable IP**
+(and TLS terminating reverse-proxy in production) in front of the API service,
+configure `.env`, then onboard endpoints using the **[sensor rollout](#sensor-rollout)** scripts.
 
-Keep **inventory**, **install directories**, SSH users, and hostnames inside
-private Ansible vars or vault — do not paste them into docs you publish.
+Compose does **not** run endpoint agents on other hosts—they connect **inbound** to
+your published manager URL (`https://moonwing.<your-domain>` or `http://<ip>:8000`, etc.).
+Keep passwords, tokens, inventory, SSH users, and hostnames outside public branches.
 
-### Ansible (preferred)
+### Docker Compose (recommended)
 
-See `deploy/ansible/inventory/` and adjust `hosts.yml` for your hosts and SSH
-accounts (do not commit real infrastructure details to a public clone).
+[`docker-compose.yml`](docker-compose.yml) supports:
+
+1. **Infrastructure only** — `postgres`, `redis`, `minio` (same hybrid dev flow
+   as [Local development](#local-development)).
+2. **Full manager (`app` profile)** — builds `moonwing-api` + `moonwing-worker`
+   from [`Dockerfile`](Dockerfile):
+
+   ```bash
+   cp .env.example .env          # edit secrets, MOONWING_SENSOR_ENROLLMENT_TOKEN, etc.
+   docker compose --profile app up -d --build
+   ```
+
+   Configure OIDC (**`MOONWING_OIDC_*`**) if used, and TLS at your ingress so browsers
+   and enrollment scripts share one **canonical HTTPS base URL**.
+
+Split topologies remain valid (Compose for DB/store, API on host systemd, Ansible,
+Kubernetes, etc.).
+
+### Ansible (alternative)
+
+Fleet managers or mixed Linux estates can use [`deploy/ansible/`](deploy/ansible/).
+See `inventory/` placeholders and `--tags manager` / `--tags sensor`.
 
 ```bash
 cd deploy/ansible
 ansible-playbook -i inventory/hosts.yml site.yml --limit <manager-host> --tags manager
 ```
 
-### PowerShell quick-deploy (Windows checkout)
+### PowerShell quick-deploy for Linux manager (optional)
 
-From a workstation with SSH/rsync tooling configured for your manager host:
+From a workstation with SSH/rsync to the manager VM:
 
 ```powershell
 .\deploy\scripts\deploy-manager.ps1 -HostIp YOUR_MANAGER_HOST
 ```
 
-Typical role / script responsibilities:
-
-1. Sync repository tree to an install directory on the manager host
-2. `pip install -e .` in the service Python environment
-3. `alembic upgrade head`
-4. `systemctl restart moonwing-api moonwing-worker` (or equivalents)
-5. Health check plus `alembic current`
-
-See [`deploy/scripts/README.md`](deploy/scripts/README.md) for scripting
-behavior and knobs.
-
-### Docker Compose (optional)
-
-[`docker-compose.yml`](docker-compose.yml) supports:
-
-1. **Infrastructure only** — `postgres`, `redis`, `minio` (same hybrid dev flow
-   as [Local development](#local-development)).
-2. **Full manager in containers (`app` profile)** — `moonwing-api` and
-   `moonwing-worker` images from the repo [`Dockerfile`](Dockerfile):
-
-   ```bash
-   docker compose --profile app up -d --build
-   ```
-
-   Good for demos, CI smoke checks, or an all-container environment. Split
-   topologies are common too (DB/object store in Compose, processes on the host,
-   or vice versa).
+Uses a venv + systemd on the **remote Linux host**. See [`deploy/scripts/README.md`](deploy/scripts/README.md).
 
 ### Sensor rollout
 
-```bash
-cd deploy/ansible
-ansible-playbook -i inventory/hosts.yml site.yml --tags sensor --limit moonwing_sensors
-```
+Sensors enroll against the HTTP API—you must designate a single **canonical manager
+origin** (FQDN preferred; static IP acceptable if HTTPS or network policy permits).
 
-Populate `moonwing_sensors` hosts in inventory for Linux targets; Windows hosts
-typically use `deploy\windows\install-moonwing-sensor.ps1`.
+**A + UI token flow**
+
+1. Set `MOONWING_SENSOR_ENROLLMENT_TOKEN` on the manager, restart API, browse
+   **Sensors → Install** to reveal/copy the bootstrap token once for your rollout wave.
+2. On each endpoint, run the thin installers shipped in this repo (same tag as manager
+   or `main`):
+
+   [`deploy/sensors/README.md`](deploy/sensors/README.md)
+
+   Summary:
+
+   ```bash
+   chmod +x deploy/sensors/install-sensor.sh
+   sudo MOONWING_MANAGER_URL=https://moonwing.example.com \
+        MOONWING_ENROLLMENT_TOKEN='<paste from UI>' \
+        ./deploy/sensors/install-sensor.sh
+   ```
+
+   ```powershell
+   cd deploy\sensors
+   .\install-sensor.ps1 -ManagerUrl https://moonwing.example.com -EnrollmentToken '<paste from UI>'
+   ```
+
+Alternatively download installers pre-filled from **Sensors → Install**, wrap the
+above in Ansible/`Invoke-WebRequest` from blob storage, or use the developer-oriented
+bundled agent at `deploy/windows/install-moonwing-sensor.ps1` which expects the repo +
+Python locally.
 
 ## Service reference (conceptual)
 
