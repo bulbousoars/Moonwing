@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import secrets
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -51,7 +52,12 @@ from moonwing.services.notifications import (
     EVENT_USER_PERMISSIONS_CHANGED,
     notify,
 )
-from moonwing.services.permissions import ASSIGNABLE_ROLES, require_role
+from moonwing.services.permissions import ASSIGNABLE_ROLES, can, require_role
+from moonwing.services.sensor_installer import (
+    InstallerConfigError,
+    render_linux_installer,
+    render_windows_installer,
+)
 from moonwing.services.run_activity import ACTIVE_RUN_STATUSES, serialize_run_activity
 from moonwing.services.targets import normalize_target_metadata
 from moonwing.services.user_origin import describe_user_origin
@@ -433,9 +439,72 @@ def runs_page(request: Request, db: Session = Depends(get_db)):
     return _render(request, 'runs.html', {'active': 'runs', 'runs': runs})
 
 
+SENSOR_STALE_AFTER = timedelta(minutes=5)
+_SEVERITY_BADGE = {
+    "critical": "critical",
+    "high": "high",
+    "medium": "medium",
+    "low": "low",
+    "info": "info",
+}
+_TASK_STATUS_BADGE = {
+    "queued": "info",
+    "running": "running",
+    "completed": "completed",
+    "failed": "critical",
+}
+
+
+def _sensor_status_badge(sensor: SensorEndpoint, now: datetime) -> tuple[str, str]:
+    """Return (label, css_class) for a sensor's effective health."""
+    if sensor.status != "active":
+        return sensor.status, "info"
+    if sensor.last_seen_at is None:
+        return "pending", "info"
+    last_seen = sensor.last_seen_at
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+    if now - last_seen > SENSOR_STALE_AFTER:
+        return "stale", "high"
+    return "active", "completed"
+
+
+def _serialize_sensor_row(sensor: SensorEndpoint, *, event_count: int, queued: int, now: datetime) -> dict:
+    label, badge = _sensor_status_badge(sensor, now)
+    return {
+        'id': str(sensor.id),
+        'hostname': sensor.hostname,
+        'platform': sensor.platform,
+        'os_name': sensor.os_name,
+        'status': sensor.status,
+        'status_label': label,
+        'status_class': badge,
+        'sensor_version': sensor.sensor_version,
+        'labels': sensor.labels or [],
+        'last_seen_at': sensor.last_seen_at.isoformat() if sensor.last_seen_at else '',
+        'event_count': event_count,
+        'queued_tasks': queued,
+    }
+
+
+def _manager_base_url(request: Request) -> str:
+    return str(request.base_url).rstrip('/')
+
+
+def _mask_token(token: str) -> str:
+    if not token:
+        return ''
+    if len(token) <= 8:
+        return '•' * len(token)
+    return f"{token[:4]}{'•' * (len(token) - 8)}{token[-4:]}"
+
+
 @router.get('/sensors', response_class=HTMLResponse)
 def sensors_page(request: Request, db: Session = Depends(get_db)):
     _require(request, 'view')
+    now = datetime.now(timezone.utc)
+    settings = _get_settings()
+
     endpoints = db.query(SensorEndpoint).order_by(SensorEndpoint.last_seen_at.desc().nullslast()).limit(250).all()
     event_counts = dict(
         db.query(SensorEvent.sensor_id, func.count(SensorEvent.id))
@@ -449,21 +518,208 @@ def sensors_page(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     sensors = [
-        {
-            'id': str(sensor.id),
-            'hostname': sensor.hostname,
-            'platform': sensor.platform,
-            'os_name': sensor.os_name,
-            'status': sensor.status,
-            'sensor_version': sensor.sensor_version,
-            'labels': sensor.labels or [],
-            'last_seen_at': sensor.last_seen_at.isoformat() if sensor.last_seen_at else '',
-            'event_count': event_counts.get(sensor.id, 0),
-            'queued_tasks': queued_counts.get(sensor.id, 0),
-        }
+        _serialize_sensor_row(
+            sensor,
+            event_count=event_counts.get(sensor.id, 0),
+            queued=queued_counts.get(sensor.id, 0),
+            now=now,
+        )
         for sensor in endpoints
     ]
-    return _render(request, 'sensors.html', {'active': 'sensors', 'sensors': sensors})
+
+    platform_counts: dict[str, int] = {"linux": 0, "windows": 0, "macos": 0}
+    active = 0
+    stale = 0
+    for s in sensors:
+        platform_counts[s['platform']] = platform_counts.get(s['platform'], 0) + 1
+        if s['status_label'] == 'active':
+            active += 1
+        elif s['status_label'] == 'stale':
+            stale += 1
+    total_events = db.query(func.count(SensorEvent.id)).scalar() or 0
+    total_queued = db.query(func.count(SensorTask.id)).filter(SensorTask.status == 'queued').scalar() or 0
+
+    current_user = getattr(request.state, 'current_user', None)
+    can_manage_sensors = can(current_user.get('role') if current_user else None, 'manage_sensors')
+
+    return _render(request, 'sensors.html', {
+        'active': 'sensors',
+        'sensors': sensors,
+        'stats': {
+            'total': len(sensors),
+            'active': active,
+            'stale': stale,
+            'platform_counts': platform_counts,
+            'total_events': total_events,
+            'total_queued_tasks': total_queued,
+        },
+        'enrollment_configured': bool(settings.sensor_enrollment_token),
+        'can_manage_sensors': can_manage_sensors,
+    })
+
+
+@router.get('/sensors/install', response_class=HTMLResponse)
+def sensor_install_page(request: Request):
+    _require(request, 'manage_sensors')
+    settings = _get_settings()
+    token = settings.sensor_enrollment_token or ''
+    return _render(request, 'sensor_install.html', {
+        'active': 'sensors',
+        'manager_url': _manager_base_url(request),
+        'enrollment_token': token,
+        'enrollment_token_masked': _mask_token(token),
+        'enrollment_configured': bool(token),
+    })
+
+
+@router.get('/sensors/install/linux.sh')
+def sensor_install_linux(request: Request):
+    _require(request, 'manage_sensors')
+    settings = _get_settings()
+    try:
+        body = render_linux_installer(
+            manager_url=_manager_base_url(request),
+            enrollment_token=settings.sensor_enrollment_token,
+        )
+    except InstallerConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return PlainTextResponse(
+        body,
+        media_type='text/x-shellscript',
+        headers={'Content-Disposition': 'attachment; filename="moonwing-sensor-install.sh"'},
+    )
+
+
+@router.get('/sensors/install/windows.ps1')
+def sensor_install_windows(request: Request):
+    _require(request, 'manage_sensors')
+    settings = _get_settings()
+    try:
+        body = render_windows_installer(
+            manager_url=_manager_base_url(request),
+            enrollment_token=settings.sensor_enrollment_token,
+        )
+    except InstallerConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return PlainTextResponse(
+        body,
+        media_type='text/x-powershell',
+        headers={'Content-Disposition': 'attachment; filename="moonwing-sensor-install.ps1"'},
+    )
+
+
+@router.get('/sensors/{sensor_id}', response_class=HTMLResponse)
+def sensor_detail_page(sensor_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'view')
+    sensor = db.get(SensorEndpoint, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=404, detail='Sensor not found')
+
+    now = datetime.now(timezone.utc)
+    label, _ = _sensor_status_badge(sensor, now)
+
+    event_count = db.query(func.count(SensorEvent.id)).filter(SensorEvent.sensor_id == sensor.id).scalar() or 0
+    queued = db.query(func.count(SensorTask.id)).filter(
+        SensorTask.sensor_id == sensor.id, SensorTask.status == 'queued'
+    ).scalar() or 0
+    running = db.query(func.count(SensorTask.id)).filter(
+        SensorTask.sensor_id == sensor.id, SensorTask.status == 'running'
+    ).scalar() or 0
+
+    recent_events = (
+        db.query(SensorEvent)
+        .filter(SensorEvent.sensor_id == sensor.id)
+        .order_by(SensorEvent.received_at.desc())
+        .limit(50)
+        .all()
+    )
+    events = []
+    for ev in recent_events:
+        payload_str = json.dumps(ev.payload or {}, sort_keys=True)
+        if len(payload_str) > 80:
+            payload_str = payload_str[:77] + '...'
+        events.append({
+            'received_at': ev.received_at.isoformat() if ev.received_at else '',
+            'event_type': ev.event_type,
+            'severity': ev.severity,
+            'severity_class': _SEVERITY_BADGE.get(ev.severity, 'info'),
+            'payload_preview': payload_str,
+        })
+
+    recent_tasks = (
+        db.query(SensorTask)
+        .filter(SensorTask.sensor_id == sensor.id)
+        .order_by(SensorTask.created_at.desc())
+        .limit(25)
+        .all()
+    )
+    tasks = [
+        {
+            'created_at': t.created_at.isoformat() if t.created_at else '',
+            'task_type': t.task_type,
+            'status': t.status,
+            'status_class': _TASK_STATUS_BADGE.get(t.status, 'info'),
+            'leased_at': t.leased_at.isoformat() if t.leased_at else '',
+            'completed_at': t.completed_at.isoformat() if t.completed_at else '',
+        }
+        for t in recent_tasks
+    ]
+
+    # Effective policy = default policy for the platform, overlaid by any
+    # custom policy stored on the sensor record.
+    from moonwing.services.sensors import DEFAULT_POLICIES
+    base_policy = dict(DEFAULT_POLICIES.get(sensor.platform, {}))
+    if sensor.policy:
+        base_policy.update(sensor.policy)
+
+    sensor_view = {
+        'id': str(sensor.id),
+        'hostname': sensor.hostname,
+        'platform': sensor.platform,
+        'os_name': sensor.os_name,
+        'status': label,
+        'sensor_version': sensor.sensor_version,
+        'labels': sensor.labels or [],
+        'enrolled_at': sensor.enrolled_at.isoformat() if sensor.enrolled_at else '',
+        'last_seen_at': sensor.last_seen_at.isoformat() if sensor.last_seen_at else '',
+        'event_count': event_count,
+        'queued_tasks': queued,
+        'running_tasks': running,
+        'inventory': sensor.inventory or {},
+        'network': sensor.network or {},
+        'effective_policy': base_policy,
+    }
+
+    current_user = getattr(request.state, 'current_user', None)
+    can_manage_sensors = can(current_user.get('role') if current_user else None, 'manage_sensors')
+
+    return _render(request, 'sensor_detail.html', {
+        'active': 'sensors',
+        'sensor': sensor_view,
+        'events': events,
+        'tasks': tasks,
+        'can_manage_sensors': can_manage_sensors,
+    })
+
+
+@router.post('/sensors/{sensor_id}/delete')
+def sensor_delete(sensor_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'manage_sensors')
+    sensor = db.get(SensorEndpoint, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=404, detail='Sensor not found')
+    db.query(SensorTask).filter(SensorTask.sensor_id == sensor.id).delete(synchronize_session=False)
+    db.query(SensorEvent).filter(SensorEvent.sensor_id == sensor.id).delete(synchronize_session=False)
+    db.delete(sensor)
+    audit(
+        db,
+        action='sensor_delete',
+        resource_type='sensor',
+        actor_user_id=UUID(request.state.current_user['id']),
+        resource_id=str(sensor_id),
+    )
+    db.commit()
+    return RedirectResponse(url='/sensors', status_code=303)
 
 
 @router.get('/runs/new', response_class=HTMLResponse)

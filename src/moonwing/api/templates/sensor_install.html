@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Install a Sensor - Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Install a sensor</h1>
+  <p>Generate a self-contained installer that enrolls an endpoint with this manager.</p>
+  <div class="page-actions page-actions-split">
+    <a href="/sensors" class="btn">&larr; Back to sensors</a>
+  </div>
+</div>
+
+{% if not enrollment_configured %}
+<div class="probe-result error">
+  <strong>Sensor enrollment is not configured.</strong>
+  Set <code>MOONWING_SENSOR_ENROLLMENT_TOKEN</code> in the manager's
+  environment and restart the API before downloading an installer.
+</div>
+{% else %}
+
+<div class="detail-card" style="margin-bottom:1.5rem">
+  <h3>Manager details</h3>
+  <div class="detail-row"><span class="label">Manager URL</span><span class="value uuid" id="manager-url">{{ manager_url }}</span></div>
+  <div class="detail-row">
+    <span class="label">Enrollment token</span>
+    <span class="value">
+      <code class="uuid" id="enrollment-token" data-token="{{ enrollment_token }}">{{ enrollment_token_masked }}</code>
+      <button type="button" class="btn" id="reveal-token-btn" style="margin-left:0.5rem">Reveal</button>
+      <button type="button" class="btn" id="copy-token-btn" style="margin-left:0.25rem">Copy</button>
+    </span>
+  </div>
+  <p class="text-muted" style="margin-top:0.75rem">
+    Treat the enrollment token like a bootstrap secret: anyone who has it can register a sensor
+    against this manager. Rotate it by changing <code>MOONWING_SENSOR_ENROLLMENT_TOKEN</code>
+    and restarting the API.
+  </p>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>
+      <span class="badge badge-info">linux</span>
+      Linux endpoint
+    </h3>
+    <p>
+      Bash installer for systemd-based Linux. Enrolls the host, drops a heartbeat agent
+      under <code>/opt/moonwing-sensor</code>, and registers
+      <code>moonwing-sensor.service</code>.
+    </p>
+    <p><strong>Requirements:</strong> root, <code>curl</code>, <code>python3</code>, systemd.</p>
+    <p style="margin-top:0.75rem">
+      <a href="/sensors/install/linux.sh" class="btn btn-primary" download>Download installer</a>
+    </p>
+    <div style="margin-top:0.75rem">
+      <strong>One-liner</strong>
+      <pre class="json-view" style="white-space:pre-wrap">curl -fsSL '{{ manager_url }}/sensors/install/linux.sh' | sudo bash</pre>
+    </div>
+  </div>
+
+  <div class="detail-card">
+    <h3>
+      <span class="badge badge-info">windows</span>
+      Windows endpoint
+    </h3>
+    <p>
+      PowerShell installer for Windows 10/11 and Server. Enrolls the host, drops the
+      heartbeat agent under <code>C:\ProgramData\Moonwing\sensor</code>, and registers
+      a SYSTEM-context scheduled task.
+    </p>
+    <p><strong>Requirements:</strong> Administrator PowerShell, .NET-based <code>Invoke-RestMethod</code>.</p>
+    <p style="margin-top:0.75rem">
+      <a href="/sensors/install/windows.ps1" class="btn btn-primary" download>Download installer</a>
+    </p>
+    <div style="margin-top:0.75rem">
+      <strong>One-liner (elevated PowerShell)</strong>
+      <pre class="json-view" style="white-space:pre-wrap">iwr '{{ manager_url }}/sensors/install/windows.ps1' -UseBasicParsing | iex</pre>
+    </div>
+  </div>
+
+  <div class="detail-card" style="opacity:0.7">
+    <h3>
+      <span class="badge badge-info">macos</span>
+      macOS endpoint
+    </h3>
+    <p>
+      The macOS sensor (LaunchDaemon-based) is not yet released. The manager-side
+      schema and policy already support it &mdash; an installer ships with a future
+      release.
+    </p>
+    <p style="margin-top:0.75rem"><button type="button" class="btn" disabled>Coming soon</button></p>
+  </div>
+</div>
+
+<div class="detail-card" style="margin-top:1.5rem">
+  <h3>What the installer does</h3>
+  <ol style="padding-left:1.25rem">
+    <li>POSTs to <code>/api/sensors/enroll</code> with the enrollment token, hostname, OS, and platform.</li>
+    <li>Receives a per-sensor token + sensor ID and stores them in a protected config file.</li>
+    <li>Installs a small heartbeat agent that POSTs basic inventory to
+      <code>/api/sensors/{id}/heartbeat</code> on a fixed interval.</li>
+    <li>Registers the agent as a system service (systemd unit on Linux, scheduled task on Windows).</li>
+  </ol>
+  <p class="text-muted">
+    The heartbeat agent in v0.1 reports hostname, kernel/OS, and basic identity only.
+    Full collectors (FIM, processes, listening ports, log shipping) ship with the
+    forthcoming sensor agent build.
+  </p>
+</div>
+
+{% endif %}
+
+{% raw %}
+<script>
+(function() {
+  var revealBtn = document.getElementById('reveal-token-btn');
+  var copyBtn = document.getElementById('copy-token-btn');
+  var tokenEl = document.getElementById('enrollment-token');
+  if (!tokenEl) return;
+  var maskedText = tokenEl.textContent;
+  var realToken = tokenEl.getAttribute('data-token');
+  var revealed = false;
+  if (revealBtn) {
+    revealBtn.addEventListener('click', function() {
+      revealed = !revealed;
+      tokenEl.textContent = revealed ? realToken : maskedText;
+      revealBtn.textContent = revealed ? 'Hide' : 'Reveal';
+    });
+  }
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function() {
+      navigator.clipboard.writeText(realToken).then(function() {
+        copyBtn.textContent = 'Copied';
+        setTimeout(function() { copyBtn.textContent = 'Copy'; }, 1500);
+      }, function() {
+        copyBtn.textContent = 'Copy failed';
+      });
+    });
+  }
+})();
+</script>
+{% endraw %}
+{% endblock %}

@@ -11,6 +11,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "manage_users",
         "manage_service_accounts",
         "manage_privileged_access",
+        "manage_sensors",
     },
     "security_engineer": {
         "view",
@@ -18,6 +19,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "manage_targets",
         "manage_credentials",
         "manage_runtime_profiles",
+        "manage_sensors",
     },
     "operator": {
         "view",
