@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}State Machine — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Run State Machine</h1>
+  <p>Valid status transitions for scan runs</p>
+</div>
+
+<div class="state-machine">
+  <div class="state-flow">
+    <span class="state-node badge-queued badge">queued</span>
+    <span class="state-arrow">&rarr;</span>
+    <span class="state-node badge-staging badge">staging</span>
+    <span class="state-arrow">&rarr;</span>
+    <span class="state-node badge-running badge">running</span>
+    <span class="state-arrow">&rarr;</span>
+    <span class="state-node badge-normalizing badge">normalizing</span>
+    <span class="state-arrow">&rarr;</span>
+    <span class="state-node badge-completed badge">completed</span>
+  </div>
+</div>
+
+<div class="detail-card" style="margin-bottom:1.5rem">
+  <h3>Transition Rules</h3>
+  <table>
+    <thead>
+      <tr><th>From</th><th>Allowed Next States</th></tr>
+    </thead>
+    <tbody>
+      {% for state, transitions in state_transitions.items() %}
+      <tr>
+        <td><span class="badge badge-{{ state }}">{{ state }}</span></td>
+        <td>
+          {% if transitions %}
+            {% for t in transitions %}
+            <span class="badge badge-{{ t }}">{{ t }}</span>
+            {% endfor %}
+          {% else %}
+            <span style="color:var(--text-muted);font-size:0.8125rem">terminal state</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>Job Families</h3>
+    <div class="detail-row"><span class="label">network_scan</span><span class="value">Clearwing network scanning</span></div>
+    <div class="detail-row"><span class="label">source_hunt</span><span class="value">Source code / repo analysis</span></div>
+  </div>
+  <div class="detail-card">
+    <h3>Providers</h3>
+    <div class="detail-row"><span class="label">openai</span><span class="value">Hosted</span></div>
+    <div class="detail-row"><span class="label">anthropic</span><span class="value">Hosted</span></div>
+    <div class="detail-row"><span class="label">openrouter</span><span class="value">Hosted</span></div>
+    <div class="detail-row"><span class="label">ollama</span><span class="value">Self-hosted</span></div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>Finding Severities</h3>
+    <div class="detail-row"><span class="badge badge-critical">critical</span></div>
+    <div class="detail-row"><span class="badge badge-high">high</span></div>
+    <div class="detail-row"><span class="badge badge-medium">medium</span></div>
+    <div class="detail-row"><span class="badge badge-low">low</span></div>
+    <div class="detail-row"><span class="badge badge-info">info</span></div>
+    <div class="detail-row"><span class="badge badge-unknown">unknown</span></div>
+  </div>
+  <div class="detail-card">
+    <h3>Endpoint Types</h3>
+    <div class="detail-row"><span class="label">hosted</span><span class="value">Cloud-hosted API</span></div>
+    <div class="detail-row"><span class="label">openai_compatible</span><span class="value">OpenAI-compatible endpoint</span></div>
+    <div class="detail-row"><span class="label">self_hosted</span><span class="value">Local/on-prem</span></div>
+  </div>
+</div>
+{% endblock %}

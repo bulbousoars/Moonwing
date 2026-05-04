@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Finding — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ finding.title }}</h1>
+  <p><span class="badge badge-{{ finding.severity }}">{{ finding.severity }}</span></p>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>Details</h3>
+    <div class="detail-row"><span class="label">ID</span><span class="value uuid">{{ finding.id }}</span></div>
+    <div class="detail-row"><span class="label">Severity</span><span class="value"><span class="badge badge-{{ finding.severity }}">{{ finding.severity }}</span></span></div>
+    <div class="detail-row"><span class="label">Run</span><span class="value"><a href="/runs/{{ finding.run_id }}" class="uuid">{{ finding.run_id[:8] }}...</a></span></div>
+    <div class="detail-row"><span class="label">Created</span><span class="value">{{ finding.created_at[:19] if finding.created_at else '—' }}</span></div>
+  </div>
+  <div class="detail-card">
+    <h3>Evidence References</h3>
+    {% if finding.evidence_refs %}
+    {% for ref in finding.evidence_refs %}
+    <div class="detail-row"><span class="value uuid">{{ ref }}</span></div>
+    {% endfor %}
+    {% else %}
+    <p style="color:var(--text-muted);font-size:0.875rem">No evidence references</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

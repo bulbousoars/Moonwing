@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p>Moonwing security platform overview</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="label">Total Runs</div>
+    <div class="value accent">{{ stats.total_runs }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Completed</div>
+    <div class="value success">{{ stats.completed_runs }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Failed</div>
+    <div class="value critical">{{ stats.failed_runs }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Queued / Running</div>
+    <div class="value accent">{{ stats.active_runs }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Total Findings</div>
+    <div class="value high">{{ stats.total_findings }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Critical</div>
+    <div class="value critical">{{ stats.critical_findings }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">High</div>
+    <div class="value high">{{ stats.high_findings }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Targets</div>
+    <div class="value accent">{{ stats.total_targets }}</div>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="label">Users</div>
+    <div class="value">{{ stats.total_users }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Credentials</div>
+    <div class="value">{{ stats.total_credentials }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Runtime Profiles</div>
+    <div class="value">{{ stats.total_profiles }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Artifacts</div>
+    <div class="value">{{ stats.total_artifacts }}</div>
+  </div>
+</div>
+
+{% if recent_runs %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>Recent Runs</h2>
+    <a href="/runs" class="btn">View All</a>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Job Family</th>
+        <th>Status</th>
+        <th>Provider / Model</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in recent_runs %}
+      <tr>
+        <td><a href="/runs/{{ r.id }}" class="uuid">{{ r.id[:8] }}...</a></td>
+        <td>{{ r.job_family }}</td>
+        <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+        <td>{{ r.provider }} / {{ r.model }}</td>
+        <td>{{ r.created_at[:19] if r.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if recent_findings %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>Recent Findings</h2>
+    <a href="/findings" class="btn">View All</a>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Severity</th>
+        <th>Run</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in recent_findings %}
+      <tr>
+        <td>{{ f.title }}</td>
+        <td><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
+        <td><a href="/runs/{{ f.run_id }}" class="uuid">{{ f.run_id[:8] }}...</a></td>
+        <td>{{ f.created_at[:19] if f.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

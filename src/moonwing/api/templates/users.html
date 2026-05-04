@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Users — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Users</h1>
+  <p>Platform users</p>
+</div>
+
+{% if users %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ users|length }} user{{ 's' if users|length != 1 }}</h2>
+    <a href="/users/new" class="btn btn-primary">+ New User</a>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Display Name</th>
+        <th>Email</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td><a href="/users/{{ u.id }}" class="uuid">{{ u.id[:8] }}...</a></td>
+        <td>{{ u.display_name }}</td>
+        <td>{{ u.email }}</td>
+        <td>{{ u.created_at[:19] if u.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No users yet</h3>
+  <p><a href="/users/new">Create your first user</a></p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,27 @@
+* text=auto eol=lf
+
+# Files that must remain LF (deployed to Linux)
+*.py text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.j2 text eol=lf
+*.sh text eol=lf
+*.service text eol=lf
+.env.example text eol=lf
+
+# PowerShell stays CRLF
+*.ps1 text eol=crlf
+
+# Binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.tar.gz binary
+*.zip binary

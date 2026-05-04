@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Runtime Profiles — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Runtime Profiles</h1>
+  <p>Execution policies and constraints for scans</p>
+</div>
+
+{% if profiles %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ profiles|length }} profile{{ 's' if profiles|length != 1 }}</h2>
+    <a href="/runtime-profiles/new" class="btn btn-primary">+ New Profile</a>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Allow Exploits</th>
+        <th>Settings</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in profiles %}
+      <tr>
+        <td><a href="/runtime-profiles/{{ p.id }}" class="uuid">{{ p.id[:8] }}...</a></td>
+        <td>{{ p.name }}</td>
+        <td>{% if p.allow_exploits %}<span class="badge badge-critical">Yes</span>{% else %}<span class="badge badge-info">No</span>{% endif %}</td>
+        <td class="uuid">{{ p.settings | tojson | truncate(40) }}</td>
+        <td>{{ p.created_at[:19] if p.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No runtime profiles yet</h3>
+  <p><a href="/runtime-profiles/new">Create your first profile</a></p>
+</div>
+{% endif %}
+{% endblock %}

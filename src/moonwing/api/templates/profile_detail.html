@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Profile {{ profile.name }} — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ profile.name }}</h1>
+  <p>Runtime profile</p>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>Profile Info</h3>
+    <div class="detail-row"><span class="label">ID</span><span class="value uuid">{{ profile.id }}</span></div>
+    <div class="detail-row"><span class="label">Name</span><span class="value">{{ profile.name }}</span></div>
+    <div class="detail-row"><span class="label">Allow Exploits</span><span class="value">{% if profile.allow_exploits %}<span class="badge badge-critical">Yes</span>{% else %}<span class="badge badge-info">No</span>{% endif %}</span></div>
+    <div class="detail-row"><span class="label">Created</span><span class="value">{{ profile.created_at[:19] if profile.created_at else '—' }}</span></div>
+  </div>
+  <div class="detail-card">
+    <h3>Settings</h3>
+    <div class="json-view">{{ profile.settings | tojson(indent=2) }}</div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Moonwing{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      Moonwing
+      <small>Security Platform</small>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a href="/" class="{% if active == 'dashboard' %}active{% endif %}">Dashboard</a></li>
+      <li><a href="/runs/new" class="{% if active == 'launch' %}active{% endif %}" style="color:var(--accent)">+ Launch Scan</a></li>
+      <li><a href="/runs" class="{% if active == 'runs' %}active{% endif %}">Runs</a></li>
+      <li><a href="/findings" class="{% if active == 'findings' %}active{% endif %}">Findings</a></li>
+      <li><a href="/targets" class="{% if active == 'targets' %}active{% endif %}">Targets</a></li>
+      <li><a href="/credentials" class="{% if active == 'credentials' %}active{% endif %}">Credentials</a></li>
+      <li><a href="/runtime-profiles" class="{% if active == 'profiles' %}active{% endif %}">Runtime Profiles</a></li>
+      <li><a href="/artifacts" class="{% if active == 'artifacts' %}active{% endif %}">Artifacts</a></li>
+      <li><a href="/users" class="{% if active == 'users' %}active{% endif %}">Users</a></li>
+      <li><a href="/state-machine" class="{% if active == 'state-machine' %}active{% endif %}">State Machine</a></li>
+      <li><a href="/docs" target="_blank">API Docs</a></li>
+    </ul>
+  </nav>
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

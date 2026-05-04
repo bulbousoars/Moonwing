@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run.id[:8] }}... — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Run <span class="uuid">{{ run.id }}</span></h1>
+  <p>{{ run.job_family }} — <span class="badge badge-{{ run.status }}">{{ run.status }}</span></p>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>Run Info</h3>
+    <div class="detail-row"><span class="label">Job Family</span><span class="value">{{ run.job_family }}</span></div>
+    <div class="detail-row"><span class="label">Status</span><span class="value"><span class="badge badge-{{ run.status }}">{{ run.status }}</span></span></div>
+    <div class="detail-row"><span class="label">Provider</span><span class="value">{{ run.provider }}</span></div>
+    <div class="detail-row"><span class="label">Model</span><span class="value">{{ run.model }}</span></div>
+    <div class="detail-row"><span class="label">Created</span><span class="value">{{ run.created_at[:19] if run.created_at else '—' }}</span></div>
+  </div>
+  <div class="detail-card">
+    <h3>References</h3>
+    <div class="detail-row"><span class="label">User</span><span class="value"><a href="/users/{{ run.user_id }}" class="uuid">{{ run.user_id[:8] }}...</a></span></div>
+    <div class="detail-row"><span class="label">Credential</span><span class="value"><a href="/credentials/{{ run.credential_id }}" class="uuid">{{ run.credential_id[:8] }}...</a></span></div>
+    <div class="detail-row"><span class="label">Runtime Profile</span><span class="value"><a href="/runtime-profiles/{{ run.runtime_profile_id }}" class="uuid">{{ run.runtime_profile_id[:8] }}...</a></span></div>
+    <div class="detail-row"><span class="label">Target</span><span class="value">{% if run.target_id %}<a href="/targets/{{ run.target_id }}" class="uuid">{{ run.target_id[:8] }}...</a>{% else %}—{% endif %}</span></div>
+  </div>
+</div>
+
+{% if run.execution_snapshot %}
+<div class="detail-card" style="margin-bottom:1.5rem">
+  <h3>Execution Snapshot</h3>
+  <div class="json-view">{{ run.execution_snapshot | tojson(indent=2) }}</div>
+</div>
+{% endif %}
+
+{% if run.findings %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>Findings ({{ run.findings|length }})</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Severity</th>
+        <th>Evidence</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in run.findings %}
+      <tr>
+        <td><a href="/findings/{{ f.id }}">{{ f.title }}</a></td>
+        <td><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
+        <td>{{ f.evidence_refs|length }} ref{{ 's' if f.evidence_refs|length != 1 }}</td>
+        <td>{{ f.created_at[:19] if f.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No findings</h3>
+  <p>This run has not produced any findings yet.</p>
+</div>
+{% endif %}
+{% endblock %}

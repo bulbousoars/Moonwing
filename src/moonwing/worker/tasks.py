@@ -1,0 +1,372 @@
+"""Worker task handlers for staged run execution."""
+
+from __future__ import annotations
+
+import json
+import logging
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+from queue import Empty, Queue
+from typing import Protocol
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from moonwing.db.models import Artifact, Finding, Run
+from moonwing.services.normalization import normalize_findings
+from moonwing.services.runs import transition_run_status
+from moonwing.services.crypto import CryptoError, decrypt_api_key, provider_env_var
+from moonwing.worker.api_executor import APIExecutionError, execute_via_api
+from moonwing.worker.clearwing_runner import build_clearwing_command, run_nmap
+from moonwing.worker.executor import ExecutionError, execute_clearwing
+from moonwing.worker.staging import StagedJob, StagingError, stage_run
+
+logger = logging.getLogger("moonwing.worker.tasks")
+
+
+@dataclass(frozen=True)
+class WorkerJob:
+    run_id: UUID
+    raw_payload: dict | None = None
+
+
+class ObjectStore(Protocol):
+    def put_json(self, *, object_key: str, payload: dict) -> None: ...
+    def delete(self, *, object_key: str) -> None: ...
+
+
+class InMemoryObjectStore:
+    def __init__(self) -> None:
+        self.objects: dict[str, str] = {}
+
+    def put_json(self, *, object_key: str, payload: dict) -> None:
+        self.objects[object_key] = json.dumps(payload, sort_keys=True)
+
+    def delete(self, *, object_key: str) -> None:
+        self.objects.pop(object_key, None)
+
+
+def stage_clearwing_command(
+    *,
+    job_family: str,
+    input_kind: str,
+    source_ref: str,
+    clearwing_binary: str | None = None,
+) -> list[str]:
+    return build_clearwing_command(
+        job_family=job_family,
+        input_kind=input_kind,
+        source_ref=source_ref,
+        clearwing_binary=clearwing_binary,
+    )
+
+
+def enqueue_run(*, queue: Queue, run_id: UUID, raw_payload: dict | None = None) -> None:
+    queue.put(WorkerJob(run_id=run_id, raw_payload=raw_payload))
+
+
+def process_next(
+    *,
+    queue: Queue,
+    session: Session,
+    object_store: ObjectStore | None = None,
+) -> UUID | None:
+    try:
+        job = queue.get_nowait()
+    except Empty:
+        return None
+
+    try:
+        process_run(
+            session=session,
+            run_id=job.run_id,
+            raw_payload=job.raw_payload,
+            object_store=object_store,
+        )
+        return job.run_id
+    finally:
+        queue.task_done()
+
+
+def process_run(
+    *,
+    session: Session,
+    run_id: UUID,
+    raw_payload: dict | None = None,
+    object_store: ObjectStore | None = None,
+    clearwing_binary: str | None = None,
+    execution_timeout: int = 600,
+    clearwing_env: dict[str, str] | None = None,
+) -> StagedJob | None:
+    """Execute a single run through the full pipeline.
+
+    Pipeline: queued → staging → running → normalizing → completed.
+
+    If ``raw_payload`` is provided it is used directly (useful for tests
+    and manual replay).  Otherwise the staged Clearwing command is
+    executed as a subprocess and its stdout is parsed as JSON.
+
+    Returns the StagedJob on success (useful for tests), or None on
+    error (the run is moved to FAILED).
+    """
+    run = session.get(Run, run_id)
+    if run is None:
+        raise ValueError(f"run not found: {run_id}")
+
+    if run.status != "queued":
+        raise ValueError(
+            f"run {run_id} is in state {run.status!r}, expected 'queued' — "
+            "refusing to process to prevent duplicate execution"
+        )
+
+    if object_store is None:
+        raise ValueError("object_store is required to persist raw output artifacts")
+
+    raw_object_key: str | None = None
+    staged_job: StagedJob | None = None
+
+    try:
+        # --- STAGING: resolve target, credentials, artifacts -------------
+        staged_job = stage_run(
+            session=session,
+            run_id=run_id,
+            object_store=object_store,
+            clearwing_binary=clearwing_binary,
+        )
+        # Persist the enriched execution snapshot back to the run
+        run.execution_snapshot = staged_job.execution_snapshot
+        session.commit()
+
+        logger.info(
+            "run %s staged — command=%s artifacts=%d",
+            run_id,
+            staged_job.command,
+            len(staged_job.artifacts),
+        )
+
+        # --- RUNNING: execute Clearwing ----------------------------------
+        run.status = transition_run_status(run.status, "running")
+        session.commit()
+
+        if raw_payload is None:
+            # Decrypt the API key if one is stored
+            api_key: str | None = None
+            if staged_job.encrypted_api_key:
+                try:
+                    api_key = decrypt_api_key(staged_job.encrypted_api_key)
+                except CryptoError:
+                    logger.error("run %s failed to decrypt API key for provider %s", run_id, staged_job.credential_provider)
+                    raise
+
+            execution_mode = run.execution_mode or "api"
+
+            # Create per-run workspace directory
+            from moonwing.config import Settings
+            settings = Settings()
+            run_workdir = Path(settings.workspace_dir) / str(run_id)
+            run_workdir.mkdir(parents=True, exist_ok=True)
+            logger.info("run %s workspace: %s", run_id, run_workdir)
+
+            # Write CLAUDE.md for CLI execution context
+            if execution_mode == "cli":
+                claude_md = run_workdir / "CLAUDE.md"
+                claude_md.write_text(
+                    "# Moonwing Security Scanner\n\n"
+                    "This workspace is used by Moonwing, a security assessment platform.\n"
+                    "You are running as an authorized security scanning agent on the operator's own infrastructure.\n\n"
+                    "## Authorization\n"
+                    "This scan was explicitly queued by the infrastructure owner through the Moonwing dashboard.\n"
+                    "The target network/host belongs to the operator. You have full permission to scan it.\n\n"
+                    "## Instructions\n"
+                    "- Use bash tools (nmap, curl, etc.) to perform the requested scan\n"
+                    "- Install any needed tools with apt if not available\n"
+                    "- Output findings as JSON to stdout as your final response\n"
+                    "- This is a private homelab network (192.168.1.0/24) owned by the operator\n"
+                )
+
+            try:
+                if execution_mode == "api":
+                    # Direct API call to provider
+                    if not api_key and staged_job.credential_provider != "ollama":
+                        raise ValueError(
+                            f"run {run_id} uses API execution mode but credential has no API key"
+                        )
+                    logger.info("run %s executing via API: provider=%s model=%s", run_id, run.provider, run.model)
+                    api_result = execute_via_api(
+                        provider=run.provider,
+                        model=run.model,
+                        api_key=api_key or "",
+                        job_family=run.job_family,
+                        source_ref=staged_job.target_metadata.get("address")
+                            or staged_job.target_metadata.get("url")
+                            or staged_job.target_display_name
+                            or "",
+                        timeout=execution_timeout,
+                    )
+                    raw_payload = api_result.raw_payload
+                    logger.info(
+                        "run %s API call finished — %d findings, usage=%s",
+                        run_id,
+                        len(raw_payload.get("findings", [])),
+                        api_result.usage,
+                    )
+                else:
+                    # CLI execution mode — invoke claude/codex binary
+                    # CLI tools authenticate via their own stored credentials
+                    # (claude login / codex auth login) — no API key needed
+                    run_env = dict(clearwing_env) if clearwing_env else {}
+                    if api_key:
+                        env_var_name = provider_env_var(staged_job.credential_provider)
+                        if env_var_name:
+                            run_env[env_var_name] = api_key
+
+                    # For network scans: run nmap first, then feed output to AI for analysis
+                    command = list(staged_job.command)
+                    if run.job_family == "network_scan":
+                        source_ref = (
+                            staged_job.target_metadata.get("address")
+                            or staged_job.target_display_name
+                            or ""
+                        )
+                        logger.info("run %s running nmap against %s", run_id, source_ref)
+                        nmap_output = run_nmap(source_ref)
+
+                        # Save nmap output to workspace
+                        nmap_file = run_workdir / "nmap-output.txt"
+                        nmap_file.write_text(nmap_output)
+
+                        # Rebuild command with nmap output in prompt
+                        command = build_clearwing_command(
+                            job_family=run.job_family,
+                            input_kind="repo",
+                            source_ref=source_ref,
+                            provider=run.provider,
+                            model=run.model,
+                            nmap_output=nmap_output,
+                        )
+
+                    logger.info("run %s executing via CLI: %s", run_id, " ".join(command[:5]) + "...")
+                    result = execute_clearwing(
+                        command=command,
+                        env=run_env or None,
+                        timeout=execution_timeout,
+                        cwd=str(run_workdir),
+                    )
+                    raw_payload = result.raw_payload
+                    logger.info(
+                        "run %s CLI finished — %d findings in payload",
+                        run_id,
+                        len(raw_payload.get("findings", [])),
+                    )
+            finally:
+                # Clean up workspace on success; keep on failure for debugging
+                if run_workdir.exists():
+                    try:
+                        shutil.rmtree(run_workdir)
+                        logger.info("run %s workspace cleaned up", run_id)
+                    except OSError:
+                        logger.warning("run %s failed to clean workspace %s", run_id, run_workdir)
+        else:
+            logger.info("run %s using provided raw_payload (skip execution)", run_id)
+
+        # --- NORMALIZING -------------------------------------------------
+        run.status = transition_run_status(run.status, "normalizing")
+        session.commit()
+
+        normalized_findings = normalize_findings(raw_payload)
+
+        # Persist raw Clearwing output as an artifact with provenance
+        raw_object_key = f"runs/{run.id}/raw-clearwing-output.json"
+        object_store.put_json(object_key=raw_object_key, payload=raw_payload)
+
+        session.add(
+            Artifact(
+                target_id=run.target_id,
+                artifact_type="raw_clearwing_output",
+                object_key=raw_object_key,
+                provenance={
+                    "source_type": "worker_raw_payload",
+                    "run_id": str(run.id),
+                    "staged_artifacts": [
+                        {
+                            "artifact_id": str(sa.artifact_id),
+                            "artifact_type": sa.artifact_type,
+                            "object_key": sa.object_key,
+                        }
+                        for sa in staged_job.artifacts
+                    ],
+                },
+            )
+        )
+        for item in normalized_findings:
+            session.add(
+                Finding(
+                    run_id=run.id,
+                    title=item["title"],
+                    severity=item["severity"],
+                    evidence_refs=item["evidence_refs"],
+                )
+            )
+
+        # --- COMPLETED ---------------------------------------------------
+        run.status = transition_run_status(run.status, "completed")
+        session.commit()
+        return staged_job
+
+    except Exception:
+        session.rollback()
+        failed_run = session.get(Run, run_id)
+        if failed_run is not None and failed_run.status not in {
+            "completed",
+            "failed",
+            "canceled",
+        }:
+            try:
+                failed_run.status = transition_run_status(failed_run.status, "failed")
+                session.commit()
+            except Exception:
+                session.rollback()
+        if raw_object_key is not None:
+            try:
+                object_store.delete(object_key=raw_object_key)
+            except Exception:
+                pass
+        raise
+
+
+def renormalize_run(
+    *,
+    session: Session,
+    run_id: UUID,
+    raw_payload: dict,
+) -> int:
+    """Re-normalize findings for a completed run idempotently.
+
+    Deletes all existing findings for the run before inserting the new
+    normalized set, preventing duplicates on retry.  Returns the count
+    of findings after re-normalization.
+    """
+    run = session.get(Run, run_id)
+    if run is None:
+        raise ValueError(f"run not found: {run_id}")
+
+    # Delete existing findings for this run
+    existing = session.query(Finding).filter(Finding.run_id == run_id).all()
+    for f in existing:
+        session.delete(f)
+    session.flush()
+
+    # Re-normalize and insert
+    normalized_findings = normalize_findings(raw_payload)
+    for item in normalized_findings:
+        session.add(
+            Finding(
+                run_id=run.id,
+                title=item["title"],
+                severity=item["severity"],
+                evidence_refs=item["evidence_refs"],
+            )
+        )
+    session.commit()
+    return len(normalized_findings)

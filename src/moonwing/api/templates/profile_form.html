@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}New Runtime Profile — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>New Runtime Profile</h1>
+  <p>Define execution policies for scans</p>
+</div>
+
+<div class="detail-card" style="max-width:600px">
+  <form method="post" action="/runtime-profiles/new">
+    <div class="form-group">
+      <label for="name">Profile Name</label>
+      <input type="text" id="name" name="name" required placeholder="e.g. default-network">
+    </div>
+    <div class="form-group">
+      <label for="allow_exploits">Allow Exploits</label>
+      <select id="allow_exploits" name="allow_exploits">
+        <option value="false">No</option>
+        <option value="true">Yes</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="settings">Settings (JSON)</label>
+      <textarea id="settings" name="settings" rows="4" placeholder='{}'>{}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Create Profile</button>
+  </form>
+</div>
+{% endblock %}

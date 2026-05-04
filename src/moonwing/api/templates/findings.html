@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Findings — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Findings</h1>
+  <p>All security findings across runs</p>
+</div>
+
+{% if severity_counts %}
+<div class="stats-grid">
+  <div class="stat-card"><div class="label">Critical</div><div class="value critical">{{ severity_counts.critical or 0 }}</div></div>
+  <div class="stat-card"><div class="label">High</div><div class="value high">{{ severity_counts.high or 0 }}</div></div>
+  <div class="stat-card"><div class="label">Medium</div><div class="value medium">{{ severity_counts.medium or 0 }}</div></div>
+  <div class="stat-card"><div class="label">Low</div><div class="value low">{{ severity_counts.low or 0 }}</div></div>
+  <div class="stat-card"><div class="label">Info</div><div class="value">{{ severity_counts.info or 0 }}</div></div>
+</div>
+{% endif %}
+
+{% if findings %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ findings|length }} finding{{ 's' if findings|length != 1 }}</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Severity</th>
+        <th>Run</th>
+        <th>Evidence</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in findings %}
+      <tr>
+        <td><a href="/findings/{{ f.id }}">{{ f.title }}</a></td>
+        <td><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
+        <td><a href="/runs/{{ f.run_id }}" class="uuid">{{ f.run_id[:8] }}...</a></td>
+        <td>{{ f.evidence_refs|length }}</td>
+        <td>{{ f.created_at[:19] if f.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No findings yet</h3>
+  <p>Findings appear here after runs complete normalization.</p>
+</div>
+{% endif %}
+{% endblock %}

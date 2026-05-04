@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Target {{ target.display_name }} — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ target.display_name }}</h1>
+  <p><span class="badge badge-info">{{ target.target_type }}</span> <a href="/runs/new?target={{ target.id }}" class="btn btn-primary" style="margin-left:1rem">Scan This Target</a></p>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>Target Info</h3>
+    <div class="detail-row"><span class="label">ID</span><span class="value uuid">{{ target.id }}</span></div>
+    <div class="detail-row"><span class="label">Type</span><span class="value">{{ target.target_type }}</span></div>
+    <div class="detail-row"><span class="label">Display Name</span><span class="value">{{ target.display_name }}</span></div>
+    <div class="detail-row"><span class="label">Created</span><span class="value">{{ target.created_at[:19] if target.created_at else '—' }}</span></div>
+  </div>
+  <div class="detail-card">
+    <h3>Source Metadata</h3>
+    <div class="json-view">{{ target.source_metadata | tojson(indent=2) }}</div>
+  </div>
+</div>
+
+{% if target.artifacts %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>Artifacts ({{ target.artifacts|length }})</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Type</th>
+        <th>Object Key</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in target.artifacts %}
+      <tr>
+        <td><a href="/artifacts/{{ a.id }}" class="uuid">{{ a.id[:8] }}...</a></td>
+        <td><span class="badge badge-info">{{ a.artifact_type }}</span></td>
+        <td class="uuid">{{ a.object_key }}</td>
+        <td>{{ a.created_at[:19] if a.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

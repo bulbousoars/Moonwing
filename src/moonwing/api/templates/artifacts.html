@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Artifacts — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Artifacts</h1>
+  <p>Stored objects with provenance tracking</p>
+</div>
+
+{% if artifacts %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ artifacts|length }} artifact{{ 's' if artifacts|length != 1 }}</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Type</th>
+        <th>Object Key</th>
+        <th>Target</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in artifacts %}
+      <tr>
+        <td><a href="/artifacts/{{ a.id }}" class="uuid">{{ a.id[:8] }}...</a></td>
+        <td><span class="badge badge-info">{{ a.artifact_type }}</span></td>
+        <td class="uuid">{{ a.object_key }}</td>
+        <td>{% if a.target_id %}<a href="/targets/{{ a.target_id }}" class="uuid">{{ a.target_id[:8] }}...</a>{% else %}—{% endif %}</td>
+        <td>{{ a.created_at[:19] if a.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No artifacts yet</h3>
+  <p>Artifacts are created during run execution.</p>
+</div>
+{% endif %}
+{% endblock %}

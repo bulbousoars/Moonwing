@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}User {{ user.display_name }} — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ user.display_name }}</h1>
+  <p>{{ user.email }}</p>
+</div>
+
+<div class="detail-card" style="max-width:600px;margin-bottom:1.5rem">
+  <h3>User Info</h3>
+  <div class="detail-row"><span class="label">ID</span><span class="value uuid">{{ user.id }}</span></div>
+  <div class="detail-row"><span class="label">Email</span><span class="value">{{ user.email }}</span></div>
+  <div class="detail-row"><span class="label">Display Name</span><span class="value">{{ user.display_name }}</span></div>
+  <div class="detail-row"><span class="label">Created</span><span class="value">{{ user.created_at[:19] if user.created_at else '—' }}</span></div>
+</div>
+{% endblock %}

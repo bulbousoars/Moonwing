@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Runs — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Runs</h1>
+  <p>All Clearwing scan executions</p>
+</div>
+
+{% if runs %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ runs|length }} run{{ 's' if runs|length != 1 }}</h2>
+    <a href="/runs/new" class="btn btn-primary">+ Launch Scan</a>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Job Family</th>
+        <th>Status</th>
+        <th>Provider / Model</th>
+        <th>Target</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td><a href="/runs/{{ r.id }}" class="uuid">{{ r.id[:8] }}...</a></td>
+        <td>{{ r.job_family }}</td>
+        <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+        <td>{{ r.provider }} / {{ r.model }}</td>
+        <td>{% if r.target_id %}<a href="/targets/{{ r.target_id }}" class="uuid">{{ r.target_id[:8] }}...</a>{% else %}—{% endif %}</td>
+        <td>{{ r.created_at[:19] if r.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No runs yet</h3>
+  <p><a href="/runs/new">Launch your first scan</a></p>
+</div>
+{% endif %}
+{% endblock %}

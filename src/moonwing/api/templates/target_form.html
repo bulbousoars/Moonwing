@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}New Target — Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>New Target</h1>
+  <p>Add a scan target</p>
+</div>
+
+<div class="detail-card" style="max-width:600px">
+  <form method="post" action="/targets/new">
+    <div class="form-group">
+      <label for="display_name">Display Name</label>
+      <input type="text" id="display_name" name="display_name" required placeholder="e.g. 192.168.1.100 or github.com/org/repo">
+    </div>
+    <div class="form-group">
+      <label for="target_type">Target Type</label>
+      <select id="target_type" name="target_type">
+        <option value="network_host">Network Host</option>
+        <option value="repo">Repository</option>
+        <option value="binary">Binary</option>
+        <option value="sbom">SBOM</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="source_metadata">Source Metadata (JSON)</label>
+      <textarea id="source_metadata" name="source_metadata" rows="4" placeholder='{"address": "192.168.1.100", "port_range": "1-1024"}'>{}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Create Target</button>
+  </form>
+</div>
+{% endblock %}
