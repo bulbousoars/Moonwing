@@ -31,3 +31,14 @@ class Settings(BaseSettings):
     oidc_scope: str = 'openid email profile'
     oidc_default_role: str = 'viewer'
     sensor_enrollment_token: str = ''
+
+    # ── In-app upgrades (admin only) ─────────────────────────────────
+    update_repo_path: str = ''
+    update_git_remote: str = 'origin'
+    update_git_branch: str = 'main'
+    update_venv_python: str = ''
+    update_github_repository: str = ''
+    update_github_branch: str = ''
+    update_systemd_units: str = ''
+    update_pip_timeout_seconds: int = 600
+    update_alembic_timeout_seconds: int = 300

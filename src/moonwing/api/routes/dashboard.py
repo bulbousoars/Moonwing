@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
@@ -59,6 +60,7 @@ from moonwing.services.sensor_installer import (
     render_windows_installer,
 )
 from moonwing.services.run_activity import ACTIVE_RUN_STATUSES, serialize_run_activity
+from moonwing.services.system_updates import apply_system_update, build_git_update_status
 from moonwing.services.targets import normalize_target_metadata
 from moonwing.services.user_origin import describe_user_origin
 from moonwing.db.models import (
@@ -720,6 +722,58 @@ def sensor_delete(sensor_id: UUID, request: Request, db: Session = Depends(get_d
     )
     db.commit()
     return RedirectResponse(url='/sensors', status_code=303)
+
+
+def _system_updates_page_context(settings) -> dict[str, object]:
+    gs = build_git_update_status(settings)
+    return {
+        'update_status': asdict(gs),
+        'update_can_apply': gs.apply_available_reason is None and gs.is_git_repository,
+    }
+
+
+@router.get('/system/updates', response_class=HTMLResponse)
+def system_updates_page(request: Request, applied: str | None = Query(None)):
+    _require(request, 'system_updates')
+    settings = _get_settings()
+    ctx = _system_updates_page_context(settings)
+    return _render(request, 'system_updates.html', {
+        'active': 'system_updates',
+        'update_applied_ok': applied == '1',
+        **ctx,
+    })
+
+
+@router.post('/system/updates/apply')
+def system_updates_apply(request: Request, db: Session = Depends(get_db), confirm: str = Form('')):
+    _require(request, 'system_updates')
+    settings = _get_settings()
+    if confirm.strip() != 'APPLY':
+        ctx = _system_updates_page_context(settings)
+        return _render(request, 'system_updates.html', {
+            'active': 'system_updates',
+            'apply_error': 'Type APPLY (all caps) in the confirmation box to run the upgrade.',
+            **ctx,
+        })
+    outcome = apply_system_update(settings)
+    audit(
+        db,
+        action='system_updates_apply',
+        resource_type='system',
+        actor_user_id=UUID(request.state.current_user['id']),
+        resource_id='moonwing',
+        outcome='success' if outcome.success else 'failure',
+        metadata={'message': outcome.message, 'steps': [s.model_dump() for s in outcome.steps]},
+    )
+    db.commit()
+    if outcome.success:
+        return RedirectResponse(url='/system/updates?applied=1', status_code=303)
+    ctx = _system_updates_page_context(_get_settings())
+    return _render(request, 'system_updates.html', {
+        'active': 'system_updates',
+        'last_apply': outcome.model_dump(),
+        **ctx,
+    })
 
 
 @router.get('/runs/new', response_class=HTMLResponse)

@@ -19,6 +19,12 @@ def test_viewer_is_read_only():
     assert not can("viewer", "launch_scan")
 
 
+def test_only_admin_can_system_updates():
+    assert can("admin", "system_updates")
+    assert not can("viewer", "system_updates")
+    assert not can("security_engineer", "system_updates")
+
+
 def test_require_role_raises_for_missing_permission():
     try:
         require_role("viewer", "launch_scan")
@@ -33,4 +39,5 @@ def test_api_paths_map_to_least_privilege_permissions():
     assert permission_for_request("/api/runs", "POST") == "launch_scan"
     assert permission_for_request("/api/credentials/test", "POST") == "manage_credentials"
     assert permission_for_request("/api/users", "GET") == "manage_users"
+    assert permission_for_request("/api/system/updates/status", "GET") == "system_updates"
     assert permission_for_request("/findings", "GET") is None

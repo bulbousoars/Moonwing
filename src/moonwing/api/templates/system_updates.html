@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Moonwing Updates - Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Moonwing updates</h1>
+  <p>Compare this manager install with the upstream git branch and apply upgrades safely.</p>
+  <div class="page-actions page-actions-split">
+    <button type="button" class="btn" onclick="location.reload()">Refresh status</button>
+    <div class="page-actions-secondary">
+      <a href="/docs" target="_blank" class="btn">API docs</a>
+    </div>
+  </div>
+</div>
+
+{% if update_applied_ok %}
+<div class="probe-result" style="border-color: var(--ok);">
+  Upgrade completed successfully. Reload the page if templates look stale — systemd may have restarted services.
+</div>
+{% endif %}
+
+{% if apply_error %}
+<div class="probe-result error">{{ apply_error }}</div>
+{% endif %}
+
+{% if last_apply %}
+<div class="probe-result {% if not last_apply.success %}error{% endif %}">
+  <strong>{{ last_apply.message }}</strong>
+  {% for step in last_apply.steps %}
+  <details style="margin-top:0.5rem;">
+    <summary>{{ step.name }} (exit {{ step.exit_code }})</summary>
+    {% if step.stdout.strip() %}<pre class="json-view" style="max-height:12rem">{{ step.stdout }}</pre>{% endif %}
+    {% if step.stderr.strip() %}<pre class="json-view critical" style="max-height:8rem">{{ step.stderr }}</pre>{% endif %}
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% set st = update_status %}
+
+<div class="kpi-rail">
+  <div class="kpi-cell">
+    <span class="kpi-label">Installed package</span>
+    <strong>{{ st.package_version }}</strong>
+    <small>importlib.metadata on this process</small>
+  </div>
+  <div class="kpi-cell">
+    <span class="kpi-label">Commits behind</span>
+    <strong>{{ st.commits_behind if st.commits_behind is not none else '—' }}</strong>
+    <small>{{ st.remote }} / fetched tip</small>
+  </div>
+  <div class="kpi-cell">
+    <span class="kpi-label">Upstream tip</span>
+    <strong>{{ st.upstream_commit_short or '—' }}</strong>
+    <small>{{ st.upstream_subject or 'subject unavailable' }}</small>
+  </div>
+  {% if st.github_remote_commit_short %}
+  <div class="kpi-cell">
+    <span class="kpi-label">GitHub</span>
+    <strong>{{ st.github_remote_commit_short }}</strong>
+    <small>{{ st.github_remote_subject or '' }}</small>
+  </div>
+  {% endif %}
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>Checkout</h3>
+    {% if st.repo_path_setting %}
+      <div class="detail-row"><span class="label">MOONWING_UPDATE_REPO_PATH</span><span class="value uuid">{{ st.repo_path_setting }}</span></div>
+    {% else %}
+      <p class="text-muted">MOONWING_UPDATE_REPO_PATH is not set — in-app upgrades are informational only unless you rely on GitHub.</p>
+    {% endif %}
+    {% if st.repo_path_resolved %}
+      <div class="detail-row"><span class="label">Resolved</span><span class="value">{{ st.repo_path_resolved }}</span></div>
+    {% endif %}
+    <div class="detail-row"><span class="label">Git repo?</span><span class="value">{% if st.is_git_repository %}yes{% else %}no{% endif %}</span></div>
+    <div class="detail-row"><span class="label">Remote / branch</span><span class="value">{{ st.remote_branch_spec }}</span></div>
+    <div class="detail-row"><span class="label">Local branch</span><span class="value">{{ st.local_branch or '—' }}</span></div>
+    <div class="detail-row"><span class="label">HEAD</span><span class="value uuid">{{ st.local_commit_full or st.local_commit_short or '—' }}</span></div>
+    <div class="detail-row"><span class="label">Working tree</span><span class="value">{% if st.working_tree_dirty is none %}unknown{% elif st.working_tree_dirty %}<span class="badge badge-high">dirty</span>{% else %}clean{% endif %}</span></div>
+    {% if st.git_unreachable_reason %}
+      <div class="probe-result error" style="margin-top:0.75rem">{{ st.git_unreachable_reason }}</div>
+    {% endif %}
+    {% if st.fetch_error %}
+      <div class="probe-result error" style="margin-top:0.75rem">{{ st.fetch_error }}</div>
+    {% endif %}
+    {% if st.github_compare_error %}
+      <div class="probe-result error" style="margin-top:0.75rem">GitHub: {{ st.github_compare_error }}</div>
+    {% endif %}
+  </div>
+
+  <div class="detail-card">
+    <h3>Apply policy</h3>
+    <p class="text-muted">Apply runs:</p>
+    <ol style="padding-left:1.25rem">
+      <li><code>git pull --ff-only</code></li>
+      <li><code>pip install -e .</code> using the detected venv</li>
+      <li><code>alembic upgrade head</code> with <code>PYTHONPATH=&lt;repo&gt;/src</code></li>
+      <li><code>systemctl restart …</code> for each configured unit (Linux hosts only)</li>
+    </ol>
+    {% if update_can_apply %}
+      <div class="probe-result" style="margin-top:0.75rem">Ready — this checkout is {{ st.commits_behind }} commit(s) behind upstream.</div>
+    {% elif st.apply_available_reason %}
+      <div class="probe-result error" style="margin-top:0.75rem">{{ st.apply_available_reason }}</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if update_can_apply %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>Apply upgrade</h2>
+    <span class="text-muted">This action mutates git and installs packages on this host.</span>
+  </div>
+  <div style="padding:1rem 1.25rem">
+    <form method="post" action="/system/updates/apply" onsubmit="return confirm('Run git pull + pip + alembic + optional systemd restart on THIS host now?');">
+      <label for="upd-confirm" class="muted" style="display:block;margin-bottom:0.35rem"><strong>Type APPLY to confirm:</strong></label>
+      <input id="upd-confirm" type="text" name="confirm" autocomplete="off" spellcheck="false" style="min-width:12rem;margin-right:0.5rem;font-family:inherit" />
+      <button type="submit" class="btn btn-primary">Implement update</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
