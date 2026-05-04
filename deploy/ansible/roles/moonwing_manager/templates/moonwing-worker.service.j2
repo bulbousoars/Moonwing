@@ -1,0 +1,17 @@
+[Unit]
+Description=Moonwing Worker
+After=network.target
+
+[Service]
+Type=simple
+User={{ moonwing_manager_user }}
+Group={{ moonwing_manager_group }}
+WorkingDirectory={{ moonwing_manager_install_dir }}
+EnvironmentFile={{ moonwing_manager_install_dir }}/.env
+Environment=PYTHONPATH={{ moonwing_manager_install_dir }}/src
+ExecStart={{ moonwing_manager_venv_dir }}/bin/python -m moonwing.worker.main
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

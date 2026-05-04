@@ -1,0 +1,17 @@
+[Unit]
+Description=Moonwing API
+After=network.target
+
+[Service]
+Type=simple
+User={{ moonwing_manager_user }}
+Group={{ moonwing_manager_group }}
+WorkingDirectory={{ moonwing_manager_install_dir }}
+EnvironmentFile={{ moonwing_manager_install_dir }}/.env
+Environment=PYTHONPATH={{ moonwing_manager_install_dir }}/src
+ExecStart={{ moonwing_manager_venv_dir }}/bin/python -m uvicorn moonwing.api.main:app --host {{ moonwing_manager_api_listen }} --port {{ moonwing_manager_api_port }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

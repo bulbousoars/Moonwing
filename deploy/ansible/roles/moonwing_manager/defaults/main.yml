@@ -1,0 +1,24 @@
+---
+# Moonwing manager (API + worker) deploy defaults.
+# Override via inventory group_vars or playbook vars as needed.
+
+moonwing_manager_user: dduggan
+moonwing_manager_group: dduggan
+moonwing_manager_install_dir: /mnt/storage/moonwing/app
+moonwing_manager_repo_dir: "{{ moonwing_manager_install_dir }}"
+moonwing_manager_venv_dir: "{{ moonwing_manager_install_dir }}/venv"
+moonwing_manager_python: /usr/bin/python3.12
+
+# Local source tree (run from a checkout of D:\Projects\Moonwing).
+# When invoked via deploy/scripts/deploy-manager.ps1 the script overrides
+# this with the absolute checkout path.
+moonwing_manager_local_src: "{{ playbook_dir }}/.."
+
+moonwing_manager_api_listen: "0.0.0.0"
+moonwing_manager_api_port: 8000
+
+# Set true to run alembic upgrade head as part of deploy.
+moonwing_manager_run_migrations: true
+
+# Set true to restart services at end of deploy.
+moonwing_manager_restart_services: true

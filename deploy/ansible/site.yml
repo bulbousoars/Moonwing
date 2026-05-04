@@ -1,0 +1,24 @@
+---
+# Top-level Moonwing deploy playbook.
+#
+# Usage:
+#   cd deploy/ansible
+#   ansible-playbook -i inventory/hosts.yml site.yml --limit secops
+#   ansible-playbook -i inventory/hosts.yml site.yml --tags manager
+#   ansible-playbook -i inventory/hosts.yml site.yml --tags sensor
+
+- name: Deploy Moonwing manager (API + worker)
+  hosts: moonwing_manager
+  become: true
+  gather_facts: true
+  tags: [manager]
+  roles:
+    - role: moonwing_manager
+
+- name: Deploy Moonwing endpoint sensors
+  hosts: moonwing_sensors
+  become: true
+  gather_facts: true
+  tags: [sensor]
+  roles:
+    - role: moonwing_sensor
