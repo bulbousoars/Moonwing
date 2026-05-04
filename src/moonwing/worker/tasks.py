@@ -193,7 +193,7 @@ def process_run(
                     "- Use bash tools (nmap, curl, etc.) to perform the requested scan\n"
                     "- Install any needed tools with apt if not available\n"
                     "- Output findings as JSON to stdout as your final response\n"
-                    "- This is a private homelab network (192.168.1.0/24) owned by the operator\n"
+                    "- This is a private RFC1918 network owned and operated by the operator\n"
                 )
                 # Each CLI reads its own project instruction file
                 for fname in ("CLAUDE.md", "GEMINI.md", "AGENTS.md"):

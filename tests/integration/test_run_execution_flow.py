@@ -63,8 +63,8 @@ def _seed_run(session, *, source_metadata=None):
     runtime = RuntimeProfileRecord(name="default-network", settings={"depth": "standard"})
     target = Target(
         target_type="host",
-        display_name="192.168.1.215",
-        source_metadata=source_metadata or {"address": "192.168.1.215"},
+        display_name="192.0.2.15",
+        source_metadata=source_metadata or {"address": "192.0.2.15"},
     )
     session.add_all([credential, runtime, target])
     session.flush()

@@ -2,9 +2,7 @@
 
 **Date:** 2026-04-21
 **Status:** Implemented — see README for what shipped beyond the original v1 scope.
-**Production host:** `secops` / `192.168.1.215` (the design originally referenced
-`192.168.1.250`; that inventory entry was stale and the VM moved before
-deployment).
+**Production host:** *Deployment-specific — use your inventory and README; omit real addresses from forks you publish.*
 
 > Historical note: this document captures the *original* platform foundation
 > intent. Several capabilities now in production (OIDC sign-in, LDAP directory
@@ -15,15 +13,15 @@ deployment).
 
 ## Goal
 
-Replace the current GVM/OpenVAS-centric `secops` workflow with a multi-user Clearwing-based platform foundation on `192.168.1.215` that supports both live network scans and source-code hunts from day one, persists normalized results in a queryable source of truth, and leaves clean boundaries for a future UI, modular runtimes, and pluggable scanners.
+Replace operator-centric vuln workflows with a multi-user Clearwing-based platform foundation that supports both live network scans and source-code hunts from day one, persists normalized results in a queryable source of truth, and leaves clean boundaries for a future UI, modular runtimes, and pluggable scanners.
 
 ## Context
 
-The existing `secops` deployment path is an Ansible-managed Docker stack under `C:\Users\danie\Documents\Ansible\roles\secops_docker_stack`. That role still provisions `openvas`, and the associated inventory is stale: `C:\Users\danie\Documents\Ansible\inventory\hosts.yml` currently lists `secops` as `192.168.1.250`, while the active host is `192.168.1.215`.
+The operator environment previously mixed legacy scanner stacks with Ansible-managed backing services.
 
 The first sub-project should not attempt to build the entire end-state product in one pass. The scoped goal is the platform foundation:
 
-- deploy and operate Clearwing-backed jobs on `secops`
+- deploy and operate Clearwing-backed jobs on the operator's chosen manager host(s)
 - support both `network_scan` and `source_hunt`
 - persist runs, findings, and provenance in a transactional source of truth
 - expose stable APIs for a later multi-user UI
@@ -95,7 +93,7 @@ This is intentionally **transactional-first**. Search projections can be added l
 
 ### 4. Local S3-Compatible Object Storage
 
-Artifacts should be stored in a local S3-compatible store from day one rather than plain filesystem paths. This preserves portability while still allowing a fully local homelab deployment.
+Artifacts should be stored in a local S3-compatible store from day one rather than plain filesystem paths. This preserves portability while still supporting fully self-hosted deployments.
 
 The system should store object references in Postgres rather than embedding local disk paths into API contracts. That way the storage provider can later move to cloud S3-compatible infrastructure with minimal API churn.
 
@@ -399,18 +397,18 @@ The future UI should be built on these APIs rather than sharing internal worker 
 
 ## Deployment Direction
 
-The first deployment target is `secops` at `192.168.1.215`.
+The first deployment target is the operator’s manager host defined in Ansible (or equivalent) inventory.
 
-Existing Ansible automation should be updated rather than bypassed. The current `secops_docker_stack` role and stale inventory entry provide a natural deployment path, but they need to be reworked away from the current OpenVAS-centric compose definition.
+Prefer updating existing automation rather than bypassing it. Prior roles that provisioned scanners can be reworked toward the Moonwing/API stack rather than duplicated ad hoc.
 
 At minimum, the infrastructure plan should account for:
 
-- correcting the inventory host to `192.168.1.215`
+- correct inventory/network reachability from control node to hosts
 - replacing or retiring the current `openvas` service path
 - provisioning Postgres
 - provisioning local S3-compatible storage
 - provisioning the control API and worker services
-- mounting appropriate persistent storage under `/mnt/storage`
+- mounting appropriate persistent storage volumes for Postgres, artifacts, etc.
 
 ## Testing Strategy
 

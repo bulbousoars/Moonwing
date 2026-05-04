@@ -7,10 +7,10 @@ def test_build_command_for_anthropic_network_scan():
     command = build_clearwing_command(
         job_family="network_scan",
         input_kind="repo",
-        source_ref="192.168.1.215",
+        source_ref="192.0.2.15",
         provider="anthropic",
         model="claude-sonnet-4-6",
-        nmap_output="Nmap scan report for 192.168.1.215\n22/tcp open ssh",
+        nmap_output="Nmap scan report for 192.0.2.15\n22/tcp open ssh",
     )
 
     assert command[0] == "claude"
@@ -66,11 +66,11 @@ def test_build_command_legacy_network_scan():
     command = build_clearwing_command(
         job_family="network_scan",
         input_kind="repo",
-        source_ref="192.168.1.215",
+        source_ref="192.0.2.15",
         clearwing_binary="/opt/clearwing/bin/clearwing",
     )
 
-    assert command == ["/opt/clearwing/bin/clearwing", "scan", "192.168.1.215"]
+    assert command == ["/opt/clearwing/bin/clearwing", "scan", "192.0.2.15"]
 
 
 def test_build_command_rejects_invalid_inputs():

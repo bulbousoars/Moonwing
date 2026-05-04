@@ -36,9 +36,9 @@ DEFAULT_POLICIES: dict[str, dict] = {
         "heartbeat_interval_seconds": 60,
         "fim": [
             {"path": "/etc", "mode": "hash", "interval_seconds": 900},
-            {"path": "/mnt/storage/docker", "mode": "metadata", "interval_seconds": 1800},
+            {"path": "/var/lib/docker", "mode": "metadata", "interval_seconds": 1800},
         ],
-        "exclusions": ["/mnt/storage/media", "/mnt/storage/minio", "/mnt/storage/pgdata"],
+        "exclusions": ["/var/log/journal", "/tmp", "/var/tmp"],
     },
     "windows": {
         "platform": "windows",

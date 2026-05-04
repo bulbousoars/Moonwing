@@ -15,7 +15,7 @@ def test_build_finding_details_prefers_persisted_details_over_derived_values():
         },
         enrichment={
             "product_affected": "MinIO API",
-            "host_affected": "secops network",
+            "host_affected": "lab network",
             "scan_type": "Network Scan",
         },
     )
@@ -36,13 +36,13 @@ def test_build_finding_details_falls_back_to_enrichment_for_legacy_findings():
         stored_details={},
         enrichment={
             "product_affected": "OpenSSH",
-            "host_affected": "192.168.1.215",
+            "host_affected": "192.0.2.15",
             "scan_type": "Network Scan",
         },
     )
 
     assert details["product_affected"] == "OpenSSH"
-    assert details["host_affected"] == "192.168.1.215"
+    assert details["host_affected"] == "192.0.2.15"
     assert details["affected_ports"] == "Unknown"
     assert details["description"] == ""
     assert details["references"] == []
@@ -50,13 +50,13 @@ def test_build_finding_details_falls_back_to_enrichment_for_legacy_findings():
 
 def test_format_evidence_refs_extracts_host_port_service_and_raw_text():
     formatted = format_evidence_refs([
-        "192.168.1.215:9003/tcp open http MinIO Console",
+        "192.0.2.15:9003/tcp open http MinIO Console",
         "http-title: MinIO Console",
     ])
 
     assert formatted[0] == {
-        "raw": "192.168.1.215:9003/tcp open http MinIO Console",
-        "host": "192.168.1.215",
+        "raw": "192.0.2.15:9003/tcp open http MinIO Console",
+        "host": "192.0.2.15",
         "port": "9003/tcp",
         "service": "http MinIO Console",
     }

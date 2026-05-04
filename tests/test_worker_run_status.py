@@ -44,8 +44,8 @@ def test_process_run_enters_staging_before_running_for_raw_payload(monkeypatch):
             command=["scanner"],
             artifacts=[],
             execution_snapshot=dict(run.execution_snapshot, staged=True),
-            target_metadata={"address": "dugganco.com"},
-            target_display_name="dugganco.com",
+            target_metadata={"address": "example.com"},
+            target_display_name="example.com",
             credential_provider="google",
             encrypted_api_key=None,
         )

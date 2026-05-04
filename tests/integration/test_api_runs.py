@@ -51,7 +51,7 @@ def _api_db(monkeypatch):
     )
     cred = Credential(id=uuid4(), scope="user", provider="openai", display_name="Test Key", secret_ref="vault://test")
     profile = RuntimeProfileRecord(id=uuid4(), name="default", allow_exploits=False, settings={})
-    target = Target(id=uuid4(), target_type="network_host", display_name="192.168.1.100", source_metadata={"address": "192.168.1.100"})
+    target = Target(id=uuid4(), target_type="network_host", display_name="192.0.2.10", source_metadata={"address": "192.0.2.10"})
     session.add_all([user, cred, profile, target])
     session.commit()
     ids = {

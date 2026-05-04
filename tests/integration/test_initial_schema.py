@@ -57,7 +57,7 @@ def test_initial_schema_persists_user_credential_and_run(session_factory):
         secret_ref='secret://credential/openai-primary',
     )
     runtime = RuntimeProfileRecord(name='default-network', settings={'depth': 'standard'})
-    target = Target(target_type='host', display_name='192.168.1.215', source_metadata={'source': 'manual'})
+    target = Target(target_type='host', display_name='192.0.2.15', source_metadata={'source': 'manual'})
     session.add_all([credential, runtime, target])
     session.flush()
 

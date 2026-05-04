@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     claude_cli_binary: str = 'claude'
     codex_cli_binary: str = 'codex'
     gemini_cli_binary: str = 'gemini'
-    workspace_dir: str = '/mnt/storage/moonwing/workspace/runs'
+    workspace_dir: str = '/var/lib/moonwing/workspace/runs'
     session_secret: str = 'moonwing-dev-session-secret-change-me'
     bootstrap_admin_email: str = 'admin'
     bootstrap_admin_password: str = 'admin'

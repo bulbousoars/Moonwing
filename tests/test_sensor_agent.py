@@ -3,7 +3,7 @@ from moonwing_sensor.collectors import collect_host_inventory, packages_from_dpk
 
 
 def test_normalize_server_url_removes_trailing_slash():
-    assert normalize_server_url("https://moonwing.dugganco.com/") == "https://moonwing.dugganco.com"
+    assert normalize_server_url("https://moonwing.example.com/") == "https://moonwing.example.com"
 
 
 def test_host_inventory_reports_platform_and_hostname():

@@ -1,8 +1,8 @@
 # Moonwing
 
 Moonwing is a Clearwing-backed control plane for multi-user vulnerability
-scanning, source hunting, and endpoint sensor management running on the
-homelab `secops` VM (`192.168.1.215`).
+scanning, source hunting, and endpoint sensor management that you typically
+deploy on hardware or a VM you operate.
 
 ## Architecture
 
@@ -26,12 +26,12 @@ homelab `secops` VM (`192.168.1.215`).
 ```
 src/moonwing/                FastAPI app, worker, services, schemas, models
 src/moonwing_sensor/         Endpoint agent package
-alembic/                     Schema migrations (head: 20260504_01)
+alembic/                     Schema migrations (see alembic/versions)
 tests/                       Foundation tests (unit/integration) + feature tests
 deploy/ansible/              moonwing_manager + moonwing_sensor roles, site.yml
 deploy/scripts/              PowerShell quick-deploy (no Ansible required)
 deploy/windows/              Windows sensor installer
-docs/                        Design specs, plans, sensor rollout, navigation
+docs/                        Design specs, plans, sensor rollout notes
 ```
 
 ## Local development
@@ -45,7 +45,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
-# Apply migrations against a local Postgres
+# Apply migrations against a local Postgres (matches compose defaults below)
 $env:MOONWING_DATABASE_URL = "postgresql+psycopg://moonwing:moonwing@localhost:5432/moonwing"
 alembic upgrade head
 
@@ -57,56 +57,64 @@ python -m uvicorn moonwing.api.main:app --reload
 pytest -v
 ```
 
+The database URL shown here matches the docker-compose Postgres credentials for
+developer convenience — change passwords and URLs for anything beyond local use.
+
 ## Deployment
 
-Two supported ways **on the production homelab VM** (`192.168.1.215`). Both
-replace the prior practice of `scp`-ing into the production venv's
-`site-packages`. **Docker Compose is not used for endpoint sensors** — sensors
-roll out via the Ansible role and `deploy/windows/install-moonwing-sensor.ps1`.
+Supported patterns for deploying the manager (API + worker) use a Git checkout
+(or rsync-equivalent sync) plus `pip install -e .`, migrations, and service
+restart. **Docker Compose does not ship endpoint sensors** — use the Ansible
+sensor role or `deploy/windows/install-moonwing-sensor.ps1`.
+
+Keep **inventory**, **install directories**, SSH users, and hostnames inside
+private Ansible vars or vault — do not paste them into docs you publish.
 
 ### Ansible (preferred)
 
+See `deploy/ansible/inventory/` and adjust `hosts.yml` for your hosts and SSH
+accounts (do not commit real infrastructure details to a public clone).
+
 ```bash
 cd deploy/ansible
-ansible-playbook -i inventory/hosts.yml site.yml --limit secops --tags manager
+ansible-playbook -i inventory/hosts.yml site.yml --limit <manager-host> --tags manager
 ```
 
 ### PowerShell quick-deploy (Windows checkout)
 
+From a workstation with SSH/rsync tooling configured for your manager host:
+
 ```powershell
-.\deploy\scripts\deploy-manager.ps1
+.\deploy\scripts\deploy-manager.ps1 -HostIp YOUR_MANAGER_HOST
 ```
 
-Both run the same five steps:
+Typical role / script responsibilities:
 
-1. rsync repo → `/mnt/storage/moonwing/app` on VM 215
-2. `pip install -e .` in the production venv
+1. Sync repository tree to an install directory on the manager host
+2. `pip install -e .` in the service Python environment
 3. `alembic upgrade head`
-4. `systemctl restart moonwing-api moonwing-worker`
-5. health check + `alembic current`
+4. `systemctl restart moonwing-api moonwing-worker` (or equivalents)
+5. Health check plus `alembic current`
 
-See [`deploy/scripts/README.md`](deploy/scripts/README.md) for the full
-contract and migration story from the legacy `scp` workflow.
+See [`deploy/scripts/README.md`](deploy/scripts/README.md) for scripting
+behavior and knobs.
 
-### Docker Compose (optional; not VM 215’s default topology)
+### Docker Compose (optional)
 
-[`docker-compose.yml`](docker-compose.yml) is **two things**:
+[`docker-compose.yml`](docker-compose.yml) supports:
 
-1. **Infrastructure only (default compose services)** — `postgres`, `redis`,
-   and `minio`. This matches local development in [Local development](#local-development): run the API and worker on the host with a venv while dependencies live in Docker.
+1. **Infrastructure only** — `postgres`, `redis`, `minio` (same hybrid dev flow
+   as [Local development](#local-development)).
 2. **Full manager in containers (`app` profile)** — `moonwing-api` and
-   `moonwing-worker` images built from the repo [`Dockerfile`](Dockerfile):
+   `moonwing-worker` images from the repo [`Dockerfile`](Dockerfile):
 
    ```bash
    docker compose --profile app up -d --build
    ```
 
-   Useful for demos, CI smoke checks, or a greenfield Docker host. On
-   **`secops` today**, Postgres/Redis/MinIO run under Docker while **API +
-   worker run under systemd**, so production rollout stays **Ansible or
-   `deploy-manager.ps1`**, not the Compose `app` profile unless you explicitly
-   choose to standardize on containers there (migrations, secrets, and
-   restarts become your Compose/ops workflow instead of the steps above).
+   Good for demos, CI smoke checks, or an all-container environment. Split
+   topologies are common too (DB/object store in Compose, processes on the host,
+   or vice versa).
 
 ### Sensor rollout
 
@@ -115,18 +123,23 @@ cd deploy/ansible
 ansible-playbook -i inventory/hosts.yml site.yml --tags sensor --limit moonwing_sensors
 ```
 
-Windows hosts use `deploy\windows\install-moonwing-sensor.ps1`.
+Populate `moonwing_sensors` hosts in inventory for Linux targets; Windows hosts
+typically use `deploy\windows\install-moonwing-sensor.ps1`.
 
-## Service map (production)
+## Service reference (conceptual)
 
-| Service | Host:Port | Description |
-|---------|-----------|-------------|
-| `moonwing-api` (systemd) | `192.168.1.215:8000` | FastAPI control plane |
-| `moonwing-worker` (systemd) | — | Async worker for runs |
-| `moonwing.dugganco.com` | Caddy/Traefik → 8000 | Public Authentik-fronted UI |
-| `postgres` (docker) | `192.168.1.215:5432` | Primary DB |
-| `redis` (docker) | `192.168.1.215:6379` | Reserved for queue dispatch |
-| `minio` (docker) | `192.168.1.215:9000/9001` | Artifact store |
+| Component | Typical role |
+|-----------|----------------|
+| `moonwing-api` | HTTP API + UI (`uvicorn`; often port 8000) |
+| `moonwing-worker` | Run execution worker |
+| Reverse proxy | TLS termination / SSO in front of the API (optional) |
+| `postgres` | Primary database |
+| `redis` | Queue / caching (currently placeholder) |
+| `minio` | S3-compatible artifact storage |
+
+Bind addresses, TLS, DNS, and port publishing are deployment-specific — set
+them in your proxy, systemd units, Compose file, or cloud load balancer rather
+than in this README.
 
 ## Run state machine
 
@@ -142,47 +155,46 @@ canceled canceled  canceled
 ## Authentication
 
 - Local username/password (PBKDF2-HMAC-SHA256 via `services/auth.py`).
-- OIDC sign-in via Authentik (`services/oidc.py`, `MOONWING_OIDC_*` env).
-- LDAP directory sync (`services/ldap_sync.py`, configured via the
-  Management UI; values stored in Postgres).
+- OIDC (`services/oidc.py`, `MOONWING_OIDC_*` env).
+- LDAP directory sync (`services/ldap_sync.py`, configurable via Management UI).
 - IAM/PAM with audit events and privileged-access grants.
-- Service-account tokens for sensors (bearer; only hashes stored in DB).
+- Service-account / sensor bearer tokens (only hashes stored in DB).
 
 ## Notifications
 
-In-app + email (SMTP). Configured at `/management/notifications`. Seven event
-types: `run_started`, `run_completed`, `critical_finding`, `user_created`,
+In-app + email (SMTP). Configured at `/management/notifications`. Event types
+include: `run_started`, `run_completed`, `critical_finding`, `user_created`,
 `user_deleted`, `user_status_changed`, `user_role_changed`.
 
 ## Encryption
 
-API keys for upstream providers (OpenAI, Anthropic, OpenRouter, Ollama) are
-Fernet-encrypted at rest (`services/crypto.py`). Generate the key with:
+Provider API keys are Fernet-encrypted at rest (`services/crypto.py`). Generate
+a key with:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-and place it in `MOONWING_ENCRYPTION_KEY` (escrowed in OpenBao at
-`secret/homelab/moonwing` on this homelab).
+Set `MOONWING_ENCRYPTION_KEY` via your secrets manager or environment —
+never commit real keys.
 
 ## Verification after deploy
 
+Use your deployed base URL (or LAN IP and port configured on the host):
+
 ```bash
-curl http://192.168.1.215:8000/health             # {"ok":true}
-ssh secops 'systemctl is-active moonwing-api moonwing-worker'
-ssh secops '/mnt/storage/moonwing/app/venv/bin/alembic -c /mnt/storage/moonwing/app/alembic.ini current'
+curl https://your-moonwing-host/health           # typically {"ok":true}
+sudo systemctl is-active moonwing-api moonwing-worker
+sudo -u <service-user> <venv>/bin/python -m alembic -c <install-path>/alembic.ini current
 ```
 
-## Status
+Adjust paths for your Ansible role defaults or container layout.
 
-Foundation work (tasks 1–10 of the original platform plan) is complete and
-shipped. Subsequent feature work — credentials encryption, dual API/CLI
-execution modes, IAM/PAM, OIDC, LDAP sync, email notifications, settings CRUD,
-website target type, scan guidance UI, run activity timeline, finding
-enrichment/insights/status, theme switcher, endpoint sensors — has been
-reconciled into this repo from VM 215 and `moonwing-ui-work`.
+## Design references
 
 See `docs/superpowers/specs/2026-04-21-clearwing-platform-foundation-design.md`
-for the original platform design and `docs/superpowers/plans/` for the
-implementation plan.
+and `docs/superpowers/plans/` for the original foundation design and
+implementation plans.
+
+Development history is in Git; keep production-specific incident notes out of a
+public default branch if they contain infra identifiers.

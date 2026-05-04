@@ -11,12 +11,12 @@ from moonwing.services.run_activity import (
 
 
 def test_append_run_activity_preserves_existing_snapshot_and_adds_timestamped_entry():
-    run = SimpleNamespace(execution_snapshot={"target": {"name": "secops"}})
+    run = SimpleNamespace(execution_snapshot={"target": {"name": "lab-host"}})
     now = datetime(2026, 5, 2, 12, 30, tzinfo=timezone.utc)
 
     append_run_activity(run, stage="running", message="Executing scan", now=now)
 
-    assert run.execution_snapshot["target"] == {"name": "secops"}
+    assert run.execution_snapshot["target"] == {"name": "lab-host"}
     assert run.execution_snapshot["activity"] == [
         {
             "timestamp": "2026-05-02T12:30:00Z",

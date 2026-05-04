@@ -8,11 +8,11 @@ def test_website_target_normalizes_https_url_for_network_scan():
     metadata = normalize_target_metadata(
         target_type="website",
         display_name="Moonwing",
-        source_metadata={"url": "https://moonwing.dugganco.com/management/notifications"},
+        source_metadata={"url": "https://moonwing.example.com/management/notifications"},
     )
 
-    assert metadata["url"] == "https://moonwing.dugganco.com/management/notifications"
-    assert metadata["address"] == "moonwing.dugganco.com"
+    assert metadata["url"] == "https://moonwing.example.com/management/notifications"
+    assert metadata["address"] == "moonwing.example.com"
     assert metadata["scheme"] == "https"
     assert metadata["path"] == "/management/notifications"
     assert metadata["scan_ports"] == "443"
@@ -24,10 +24,10 @@ def test_website_target_uses_explicit_url_port():
     metadata = normalize_target_metadata(
         target_type="website",
         display_name="Lab App",
-        source_metadata={"url": "http://192.168.1.215:8000/health"},
+        source_metadata={"url": "http://192.0.2.15:8000/health"},
     )
 
-    assert metadata["address"] == "192.168.1.215"
+    assert metadata["address"] == "192.0.2.15"
     assert metadata["scan_ports"] == "8000"
 
 

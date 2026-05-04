@@ -7,7 +7,7 @@ def test_build_finding_insights_derives_risk_docs_and_validation_steps():
         severity="high",
         finding_details={
             "product_affected": "MinIO Console",
-            "host_affected": "192.168.1.215",
+            "host_affected": "192.0.2.15",
             "affected_ports": "9003/tcp",
             "scan_type": "Network Scan",
             "description": "The MinIO administrative console is reachable.",
@@ -17,8 +17,8 @@ def test_build_finding_insights_derives_risk_docs_and_validation_steps():
             "references": ["https://min.io/docs/"],
         },
         stored_details={"product": "MinIO Console", "cve": "CVE-2024-1234"},
-        evidence_refs=["192.168.1.215 9003/tcp open http MinIO Console"],
-        target_metadata={"address": "192.168.1.215", "network_exposure": "internal"},
+        evidence_refs=["192.0.2.15 9003/tcp open http MinIO Console"],
+        target_metadata={"address": "192.0.2.15", "network_exposure": "internal"},
     )
 
     assert "MinIO Console" in insights["executive_summary"]
@@ -28,7 +28,7 @@ def test_build_finding_insights_derives_risk_docs_and_validation_steps():
     assert "Re-run the scan" in insights["validation_steps"]
     assert "https://min.io/docs/" in insights["documentation_links"]
     assert "https://nvd.nist.gov/vuln/detail/CVE-2024-1234" in insights["vulnerability_references"]
-    assert insights["affected_asset"]["Host"] == "192.168.1.215"
+    assert insights["affected_asset"]["Host"] == "192.0.2.15"
     assert insights["affected_asset"]["Ports"] == "9003/tcp"
 
 

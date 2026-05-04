@@ -3,7 +3,7 @@
 #
 # Usage:
 #   cd deploy/ansible
-#   ansible-playbook -i inventory/hosts.yml site.yml --limit secops
+#   ansible-playbook -i inventory/hosts.yml site.yml --limit moonwing_manager_primary
 #   ansible-playbook -i inventory/hosts.yml site.yml --tags manager
 #   ansible-playbook -i inventory/hosts.yml site.yml --tags sensor
 

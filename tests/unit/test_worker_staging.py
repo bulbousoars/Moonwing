@@ -79,8 +79,8 @@ def seed_target(session: Session) -> Target:
     target = Target(
         id=uuid4(),
         target_type="network_host",
-        display_name="192.168.1.215",
-        source_metadata={"address": "192.168.1.215", "port_range": "1-1024"},
+        display_name="192.0.2.15",
+        source_metadata={"address": "192.0.2.15", "port_range": "1-1024"},
     )
     session.add(target)
     session.commit()
@@ -174,8 +174,8 @@ class TestStageRun:
             session=session, run_id=run.id, object_store=object_store,
         )
 
-        assert staged.target_display_name == "192.168.1.215"
-        assert staged.target_metadata["address"] == "192.168.1.215"
+        assert staged.target_display_name == "192.0.2.15"
+        assert staged.target_metadata["address"] == "192.0.2.15"
 
     def test_stage_run_resolves_credential_ref(
         self, session, object_store, seed_user, seed_credential, seed_runtime_profile, seed_target,
@@ -389,7 +389,7 @@ class TestStageRunErrors:
             credential=seed_credential,
             profile=seed_runtime_profile,
             target=None,
-            execution_snapshot={"source_ref": "192.168.1.100"},
+            execution_snapshot={"source_ref": "192.0.2.10"},
         )
 
         staged = stage_run(

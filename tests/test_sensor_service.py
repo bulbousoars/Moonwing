@@ -64,7 +64,7 @@ def test_heartbeat_updates_inventory_and_returns_platform_policy():
         session,
         enrollment_token="enroll-secret",
         expected_enrollment_token="enroll-secret",
-        hostname="danspc",
+        hostname="workstation-01",
         platform="windows",
         os_name="Windows 11",
         sensor_version="0.1.0",
@@ -75,7 +75,7 @@ def test_heartbeat_updates_inventory_and_returns_platform_policy():
         sensor_id=enrolled.sensor.id,
         token=enrolled.token,
         inventory={"installed_apps": ["PowerShell"]},
-        network={"ips": ["192.168.1.7"]},
+        network={"ips": ["192.0.2.20"]},
         sensor_version="0.1.1",
     )
 
@@ -91,7 +91,7 @@ def test_sensor_task_lifecycle_requires_sensor_token():
         session,
         enrollment_token="enroll-secret",
         expected_enrollment_token="enroll-secret",
-        hostname="secops",
+        hostname="lab-sensor-01",
         platform="linux",
         os_name="Ubuntu",
         sensor_version="0.1.0",

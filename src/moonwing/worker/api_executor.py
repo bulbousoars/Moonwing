@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 
 import httpx
@@ -234,7 +235,9 @@ def execute_via_api(
         url = _PROVIDER_ENDPOINTS[provider]
         extra_headers = {}
         if provider == "openrouter":
-            extra_headers["HTTP-Referer"] = "https://moonwing.dugganco.com"
+            extra_headers["HTTP-Referer"] = os.environ.get(
+                "MOONWING_OPENROUTER_HTTP_REFERER", "https://moonwing.example.org"
+            )
             extra_headers["X-Title"] = "Moonwing Security Scanner"
         result = _call_openai_compatible(
             url=url,
