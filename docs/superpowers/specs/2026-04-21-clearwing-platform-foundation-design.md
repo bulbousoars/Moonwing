@@ -1,6 +1,17 @@
 # Clearwing Platform Foundation Design
 
 **Date:** 2026-04-21
+**Status:** Implemented — see README for what shipped beyond the original v1 scope.
+**Production host:** `secops` / `192.168.1.215` (the design originally referenced
+`192.168.1.250`; that inventory entry was stale and the VM moved before
+deployment).
+
+> Historical note: this document captures the *original* platform foundation
+> intent. Several capabilities now in production (OIDC sign-in, LDAP directory
+> sync, IAM/PAM with audit, email notifications, endpoint sensors, management
+> UI) were intentionally outside the v1 non-goals listed below and were added
+> in subsequent iterations. The README and `docs/sensors/rollout.md` describe
+> the current shipped feature set.
 
 ## Goal
 
