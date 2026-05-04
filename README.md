@@ -1,218 +1,219 @@
 # Moonwing
 
-Moonwing is a Clearwing-backed control plane for multi-user vulnerability
-scanning, source hunting, and endpoint sensor management that you typically
-deploy on hardware or a VM you operate.
+Moonwing is a **web-based security operations hub** your team installs on a server **you** control (a VM, bare metal, or cloud instance). Through the browser people can coordinate **network vulnerability scans**, **source-code hunts**, manage **credentials and integrations**, browse **findings**, and enroll **endpoint sensors** (lightweight agents on Linux or Windows PCs/servers).
 
-## Architecture
+Behind the scenes a database stores users, scans, artifacts, policies, and sensor data—this is meant for **multi-user**, **auditable** work, not ad-hoc one-off scripting.
 
-- **Control API (`moonwing-api`)** — FastAPI app: runs, targets, credentials,
-  runtime profiles, findings, IAM/PAM, OIDC sign-in, sensor enrollment, LDAP
-  directory sync, email notifications, management UI.
-- **Worker (`moonwing-worker`)** — polls Postgres for queued runs, stages
-  inputs, executes Clearwing/Claude/Codex CLI or direct provider APIs,
-  normalizes findings, writes artifacts to MinIO.
-- **Postgres** — system of record for users, credentials, runtime profiles,
-  targets, runs, findings, artifacts, sensors, audit events, privileged-access
-  grants, SMTP / LDAP / OIDC config, etc.
-- **Redis** — placeholder queue backend (current dispatch is in-process).
-- **MinIO** — S3-compatible artifact store with provenance tracking.
-- **Endpoint sensors (`moonwing_sensor`)** — Enroll Linux or Windows hosts against
-  a manager reachable at a **stable DNS name or IP**; see [Sensor rollout](#sensor-rollout).
+---
 
-## Repository layout
+## Prerequisites
 
+Install on the machine that will host Moonwing:
+
+- **Docker Engine** and the **Compose v2** plugin (`docker compose …`)
+- **Git** (`git`)
+
+You open **one TCP port** to users (normally **8000** for the Compose layout below, often **443** in production after you put TLS in front). Endpoint sensors reach the **same public address** over HTTPS—plan a DNS name early so scripts and SSO stay simple.
+
+---
+
+## Recommended install (system administrator): clone the Git repository + Docker Compose
+
+Use a **`git clone`**, not GitHub “Download ZIP”, when you intend to operate this as an installation you will **update over time**:
+
+| Prefer Git checkout | Prefer ZIP less often |
+|---|---|
+| **`git pull`** reapplies upstream fixes and features in one familiar step | Replacing folders by hand errors easily |
+| You can **pin releases** (`git checkout v…`) reproducibly | No clean **remote** metadata for tooling |
+| Optional **in-app upgrades** and scripts assume a checkout with origins | Sensors and automation often bundle **installer paths** keyed to repo layout |
+
+ZIP is acceptable only where Git is forbidden; expect a heavier manual bump process.
+
+### Install steps (first boot)
+
+Pick a stable directory owned by whoever runs Docker (often `/opt` on Linux):
+
+```bash
+sudo mkdir -p /opt/moonwing
+sudo chown "$USER:$USER" /opt/moonwing
+cd /opt/moonwing
+
+git clone https://github.com/bulbousoars/Moonwing.git
+cd Moonwing
+
+# Optional: deploy a numbered release tag when you publish them
+# git checkout v0.2.0
+
+cp .env.example .env
 ```
-src/moonwing/                FastAPI app, worker, services, schemas, models
-src/moonwing_sensor/         Endpoint agent package
-alembic/                     Schema migrations (see alembic/versions)
-tests/                       Foundation tests (unit/integration) + feature tests
-deploy/ansible/              Optional moonwing_manager + moonwing_sensor roles, site.yml
-deploy/scripts/              Optional PowerShell host sync deploy (venv + systemd)
-deploy/sensors/              In-repo Linux / Windows sensor installers (Compose-friendly)
-deploy/windows/              Alternate Windows installer (bundles repo Python sensor)
-docs/                        Design specs, plans, sensor rollout notes
+
+Edit `.env`. At minimum for a serious deployment you should assign:
+
+- **`MOONWING_SESSION_SECRET`** — long random secret for cookie sessions  
+- **`MOONWING_ENCRYPTION_KEY`** — Fernet key (see [.env.example](.env.example) comment); needed before storing integration API keys  
+- **`MOONWING_SENSOR_ENROLLMENT_TOKEN`** — long random string; anyone with it may register sensors—rotate deliberately  
+- Change **Postgres / MinIO** passwords inside **both** Compose services and **`MOONWING_DATABASE_URL` / `.env`** if you expose Postgres or MinIO past localhost  
+
+Start the stack and create database tables:
+
+```bash
+docker compose --profile app up -d --build
+docker compose exec moonwing-api python -m alembic upgrade head
 ```
 
-## Local development
+Check health from the Docker host:
+
+```bash
+curl -fsS http://127.0.0.1:8000/health
+```
+
+Browse to `http://YOUR_SERVER:8000`, or your public HTTPS URL once a reverse proxy terminates TLS. Complete any first-run prompts to create your administrator identity.
+
+Expose **HTTPS** publicly for production (`reverse proxy → moonwing-api:8000`; put OIDC and browser flows on that canonical URL).
+
+### Updating after `git pull`
+
+Run from the clone root:
+
+```bash
+git pull origin main
+# or checkout a newer tag explicitly
+
+docker compose --profile app up -d --build
+docker compose exec moonwing-api python -m alembic upgrade head
+```
+
+---
+
+## Sensors (fleet endpoints)
+
+Agents **call into** Moonwing—they do not run inside the Compose file on arbitrary LAN machines.
+
+Requirements:
+
+1. **Reachable HTTPS (or LAN HTTP only if policy allows)** on a **hostname or stable IP everyone agrees on** (`https://moonwing.company.internal`, etc.).
+2. **Enrollment token**: set `MOONWING_SENSOR_ENROLLMENT_TOKEN` in `.env`; copy the plaintext value once from **Sensors → Install** in the web UI during rollout waves.
+
+Fleet-friendly scripts checked into this repo (same Git clone admins already use):
+
+- [`deploy/sensors/install-sensor.sh`](deploy/sensors/install-sensor.sh) — Linux (root), `curl` + `python3`  
+- [`deploy/sensors/install-sensor.ps1`](deploy/sensors/install-sensor.ps1) — Windows (elevated PowerShell)  
+
+Supply:
+
+```bash
+export MOONWING_MANAGER_URL=https://moonwing.company.internal
+export MOONWING_ENROLLMENT_TOKEN='<paste-from-UI>'
+sudo ./deploy/sensors/install-sensor.sh
+```
+
+Details: [`deploy/sensors/README.md`](deploy/sensors/README.md).
+
+---
+
+## What Compose runs ([`docker-compose.yml`](docker-compose.yml))
+
+Without `--profile app` you get Postgres, Redis, and MinIO only (for developers coupling a local Python process to those services).
+
+With **`--profile app`**, Compose also builds **`moonwing-api`** (website + REST API on **8000**) and **`moonwing-worker`** from this repository’s Dockerfile. Persisted Docker volumes retain database and MinIO data across restarts.
+
+Those two services use **`depends_on: service_healthy`**: Docker will not start **`moonwing-api`** or **`moonwing-worker`** until Postgres (**`pg_isready`**), Redis (**`redis-cli ping`**), and MinIO (**`GET /minio/health/live`**) pass their **healthcheck** hooks. That avoids most race conditions where the app boots before the database socket or object store is ready.
+
+**`moonwing-api`** also has a Compose health probe that hits **`GET /health`** (process is up and responding). It does **not** verify the SQL schema—run **`alembic upgrade head`** right after the first **`up`**; until migrations exist the API may exit and restart until the schema is in place.
+| Service | Rough purpose |
+|---------|----------------|
+| moonwing-api | Browser UI & HTTP APIs |
+| moonwing-worker | Background jobs for queued scans/workflows |
+| postgres | Permanent storage |
+| redis | Queue placeholder / future buffering |
+| minio | Stored scan artifacts blob storage |
+
+Compose publishes **5432 / 6379 / 9000 / 9001 / 8000** on the loopback/host—**tighten firewalls** in production and prefer private Docker networks plus a reverse-proxy surface.
+
+---
+
+## Other deployment modes (advanced)
+
+Administrators integrating with existing fleets may instead:
+
+| Path | Brief |
+|------|--------|
+| [`deploy/ansible/`](deploy/ansible/) | Install manager or sensors onto raw Linux hosts with Ansible inventories |
+| [`deploy/scripts/deploy-manager.ps1`](deploy/scripts/deploy-manager.ps1) | Sync this repo over SSH into venv/systemd installs from a PowerShell workstation |
+| [Local development](#local-development-developers-only) below | Postgres/Redis/MinIO in Compose, Python API on laptop |
+
+Compose remains default for “single logical install Git-tracked beside automation.”
+
+---
+
+## Local development (developers only)
 
 ```powershell
-# Bring up backing services
 docker compose up -d postgres redis minio
 
-# Install Moonwing into a local venv
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
-# Apply migrations against a local Postgres (matches compose defaults below)
 $env:MOONWING_DATABASE_URL = "postgresql+psycopg://moonwing:moonwing@localhost:5432/moonwing"
 alembic upgrade head
 
-# Run the API
 $env:PYTHONPATH = "src"
 python -m uvicorn moonwing.api.main:app --reload
 
-# Run tests
 pytest -v
 ```
 
-The database URL shown here matches the docker-compose Postgres credentials for
-developer convenience — change passwords and URLs for anything beyond local use.
+---
 
-## Deployment
+## Folder map (technical)
 
-**Recommended operators path:** clone or pull tagged releases from this repo, run
-the **Docker Compose stack** for the manager, put a **stable DNS name or routable IP**
-(and TLS terminating reverse-proxy in production) in front of the API service,
-configure `.env`, then onboard endpoints using the **[sensor rollout](#sensor-rollout)** scripts.
-
-Compose does **not** run endpoint agents on other hosts—they connect **inbound** to
-your published manager URL (`https://moonwing.<your-domain>` or `http://<ip>:8000`, etc.).
-Keep passwords, tokens, inventory, SSH users, and hostnames outside public branches.
-
-### Docker Compose (recommended)
-
-[`docker-compose.yml`](docker-compose.yml) supports:
-
-1. **Infrastructure only** — `postgres`, `redis`, `minio` (same hybrid dev flow
-   as [Local development](#local-development)).
-2. **Full manager (`app` profile)** — builds `moonwing-api` + `moonwing-worker`
-   from [`Dockerfile`](Dockerfile):
-
-   ```bash
-   cp .env.example .env          # edit secrets, MOONWING_SENSOR_ENROLLMENT_TOKEN, etc.
-   docker compose --profile app up -d --build
-   ```
-
-   Configure OIDC (**`MOONWING_OIDC_*`**) if used, and TLS at your ingress so browsers
-   and enrollment scripts share one **canonical HTTPS base URL**.
-
-Split topologies remain valid (Compose for DB/store, API on host systemd, Ansible,
-Kubernetes, etc.).
-
-### Ansible (alternative)
-
-Fleet managers or mixed Linux estates can use [`deploy/ansible/`](deploy/ansible/).
-See `inventory/` placeholders and `--tags manager` / `--tags sensor`.
-
-```bash
-cd deploy/ansible
-ansible-playbook -i inventory/hosts.yml site.yml --limit <manager-host> --tags manager
+```
+src/moonwing/         Application packages (API routes, worker, services)
+src/moonwing_sensor/  Endpoint agent library (alternate Windows install path uses it out of-repo)
+deploy/sensors/       Thin curl/PowerShell enroll scripts for fleets
+deploy/ansible/       IaC supplemental roles when Compose is insufficient
+deploy/windows/       Python-based Windows installer (developer-style)
+docs/                 Long-form notes and rollout phase planning
 ```
 
-### PowerShell quick-deploy for Linux manager (optional)
+---
 
-From a workstation with SSH/rsync to the manager VM:
+## Authentication highlights
 
-```powershell
-.\deploy\scripts\deploy-manager.ps1 -HostIp YOUR_MANAGER_HOST
-```
+Moonwing supports conventional **login email/username + password**, **OIDC SSO** (`MOONWING_OIDC_*`), **LDAP-derived directory synchronization**, granular **IAM / PAM** with audit hooks, dedicated **sensor** bearer identities, plus optional **SMTP** notifications surfaced in `/management/notifications`.
 
-Uses a venv + systemd on the **remote Linux host**. See [`deploy/scripts/README.md`](deploy/scripts/README.md).
+---
 
-### Sensor rollout
-
-Sensors enroll against the HTTP API—you must designate a single **canonical manager
-origin** (FQDN preferred; static IP acceptable if HTTPS or network policy permits).
-
-**A + UI token flow**
-
-1. Set `MOONWING_SENSOR_ENROLLMENT_TOKEN` on the manager, restart API, browse
-   **Sensors → Install** to reveal/copy the bootstrap token once for your rollout wave.
-2. On each endpoint, run the thin installers shipped in this repo (same tag as manager
-   or `main`):
-
-   [`deploy/sensors/README.md`](deploy/sensors/README.md)
-
-   Summary:
-
-   ```bash
-   chmod +x deploy/sensors/install-sensor.sh
-   sudo MOONWING_MANAGER_URL=https://moonwing.example.com \
-        MOONWING_ENROLLMENT_TOKEN='<paste from UI>' \
-        ./deploy/sensors/install-sensor.sh
-   ```
-
-   ```powershell
-   cd deploy\sensors
-   .\install-sensor.ps1 -ManagerUrl https://moonwing.example.com -EnrollmentToken '<paste from UI>'
-   ```
-
-Alternatively download installers pre-filled from **Sensors → Install**, wrap the
-above in Ansible/`Invoke-WebRequest` from blob storage, or use the developer-oriented
-bundled agent at `deploy/windows/install-moonwing-sensor.ps1` which expects the repo +
-Python locally.
-
-## Service reference (conceptual)
-
-| Component | Typical role |
-|-----------|----------------|
-| `moonwing-api` | HTTP API + UI (`uvicorn`; often port 8000) |
-| `moonwing-worker` | Run execution worker |
-| Reverse proxy | TLS termination / SSO in front of the API (optional) |
-| `postgres` | Primary database |
-| `redis` | Queue / caching (currently placeholder) |
-| `minio` | S3-compatible artifact storage |
-
-Bind addresses, TLS, DNS, and port publishing are deployment-specific — set
-them in your proxy, systemd units, Compose file, or cloud load balancer rather
-than in this README.
-
-## Run state machine
+## Run/job lifecycle
 
 ```
 queued → staging → running → normalizing → completed
-  ↓        ↓         ↓           ↓
-failed   failed    failed      failed
-  ↑        ↑         ↑
-canceled canceled  canceled
-                  needs_review
+  ·        ·         ·           ·
+failed … canceled … needs_review (where applicable)
 ```
 
-## Authentication
+---
 
-- Local username/password (PBKDF2-HMAC-SHA256 via `services/auth.py`).
-- OIDC (`services/oidc.py`, `MOONWING_OIDC_*` env).
-- LDAP directory sync (`services/ldap_sync.py`, configurable via Management UI).
-- IAM/PAM with audit events and privileged-access grants.
-- Service-account / sensor bearer tokens (only hashes stored in DB).
+## Operational encryption note
 
-## Notifications
+Synthetic provider keys reside encrypted at-rest only after **`MOONWING_ENCRYPTION_KEY`** is populated (generate per `.env.example`).
 
-In-app + email (SMTP). Configured at `/management/notifications`. Event types
-include: `run_started`, `run_completed`, `critical_finding`, `user_created`,
-`user_deleted`, `user_status_changed`, `user_role_changed`.
+---
 
-## Encryption
-
-Provider API keys are Fernet-encrypted at rest (`services/crypto.py`). Generate
-a key with:
+## After-deploy checks (Compose-oriented)
 
 ```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+curl -fsS https://your-public-hostname/health
+docker compose ps
+docker compose logs -f moonwing-api --tail 50
+docker compose exec moonwing-api python -m alembic current
 ```
 
-Set `MOONWING_ENCRYPTION_KEY` via your secrets manager or environment —
-never commit real keys.
+---
 
-## Verification after deploy
+## Background reading
 
-Use your deployed base URL (or LAN IP and port configured on the host):
+Historical platform notes live under [`docs/superpowers/specs/`](docs/superpowers/specs/).
+Those documents sometimes refer to external scanner or CLI tooling by **product name for historical context** — **Moonwing is an independent project** and **does not** imply affiliation, endorsement, or support from any third-party tool named there.
 
-```bash
-curl https://your-moonwing-host/health           # typically {"ok":true}
-sudo systemctl is-active moonwing-api moonwing-worker
-sudo -u <service-user> <venv>/bin/python -m alembic -c <install-path>/alembic.ini current
-```
-
-Adjust paths for your Ansible role defaults or container layout.
-
-## Design references
-
-See `docs/superpowers/specs/2026-04-21-clearwing-platform-foundation-design.md`
-and `docs/superpowers/plans/` for the original foundation design and
-implementation plans.
-
-Development history is in Git; keep production-specific incident notes out of a
-public default branch if they contain infra identifiers.

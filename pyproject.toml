@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "moonwing"
 version = "0.1.0"
-description = "Moonwing Clearwing orchestration platform"
+description = "Moonwing — web-based security operations hub for scans, hunts, and sensors"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

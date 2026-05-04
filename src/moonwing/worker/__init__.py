@@ -1,1 +1,1 @@
-"""Worker package for Clearwing execution."""
+"""Worker package for queued run execution (CLI and API-backed runtimes)."""
