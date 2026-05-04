@@ -1,10 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Target {{ target.display_name }} — Moonwing{% endblock %}
+{% block title %}Target {{ target.display_name }} - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>{{ target.display_name }}</h1>
-  <p><span class="badge badge-info">{{ target.target_type }}</span> <a href="/runs/new?target={{ target.id }}" class="btn btn-primary" style="margin-left:1rem">Scan This Target</a></p>
+  <p><span class="badge badge-info">{{ target.target_type }}</span></p>
+  <div class="page-actions page-actions-split">
+    <a href="/runs/new?target={{ target.id }}" class="btn btn-primary">Scan This Target</a>
+    <div class="page-actions-secondary">
+      <a href="/targets/{{ target.id }}/edit" class="btn">Edit</a>
+      <form method="post" action="/targets/{{ target.id }}/delete" class="inline-delete-form" onsubmit="return confirm('Delete this target?');">
+        <button type="submit" class="btn btn-danger">Delete</button>
+      </form>
+    </div>
+  </div>
 </div>
+
+{% if error %}
+<div class="probe-result error">{{ error }}</div>
+{% endif %}
 
 <div class="detail-grid">
   <div class="detail-card">
@@ -12,7 +25,7 @@
     <div class="detail-row"><span class="label">ID</span><span class="value uuid">{{ target.id }}</span></div>
     <div class="detail-row"><span class="label">Type</span><span class="value">{{ target.target_type }}</span></div>
     <div class="detail-row"><span class="label">Display Name</span><span class="value">{{ target.display_name }}</span></div>
-    <div class="detail-row"><span class="label">Created</span><span class="value">{{ target.created_at[:19] if target.created_at else '—' }}</span></div>
+    <div class="detail-row"><span class="label">Created</span><span class="value">{{ target.created_at[:19] if target.created_at else '-' }}</span></div>
   </div>
   <div class="detail-card">
     <h3>Source Metadata</h3>
@@ -40,7 +53,7 @@
         <td><a href="/artifacts/{{ a.id }}" class="uuid">{{ a.id[:8] }}...</a></td>
         <td><span class="badge badge-info">{{ a.artifact_type }}</span></td>
         <td class="uuid">{{ a.object_key }}</td>
-        <td>{{ a.created_at[:19] if a.created_at else '—' }}</td>
+        <td>{{ a.created_at[:19] if a.created_at else '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>

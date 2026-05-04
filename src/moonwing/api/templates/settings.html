@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Configuration — Moonwing{% endblock %}
+{% block content %}
+<div class="breadcrumb">
+  <a href="/">Dashboard</a><span class="sep">/</span><span class="current">Configuration</span>
+</div>
+<div class="page-header">
+  <h1>Configuration</h1>
+  <p>Manage targets, credentials, and runtime profiles</p>
+</div>
+
+<div class="settings-tabs">
+  <button class="settings-tab active" onclick="showTab('targets')" id="tab-targets">Targets</button>
+  <button class="settings-tab" onclick="showTab('credentials')" id="tab-credentials">Credentials</button>
+  <button class="settings-tab" onclick="showTab('profiles')" id="tab-profiles">Runtime Profiles</button>
+</div>
+
+<!-- Targets -->
+<div id="panel-targets" class="settings-panel">
+{% if targets %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ targets|length }} target{{ 's' if targets|length != 1 }}</h2>
+    <a href="/targets/new" class="btn btn-primary btn-sm">+ New Target</a>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Display Name</th><th>Type</th><th>Metadata</th><th>Created</th><th class="list-row-affordance-heading" aria-label="Open details"></th></tr></thead>
+    <tbody>
+      {% for t in targets %}
+      <tr data-href="/targets/{{ t.id }}">
+        <td><a href="/targets/{{ t.id }}" class="uuid">{{ t.id[:8] }}</a></td>
+        <td>{{ t.display_name }}</td>
+        <td><span class="badge badge-info">{{ t.target_type }}</span></td>
+        <td class="uuid">{{ t.source_metadata | tojson | truncate(50) }}</td>
+        <td><span class="ts" data-ts="{{ t.created_at }}">{{ t.created_at[:19] if t.created_at else '—' }}</span></td>
+        <td class="list-row-affordance">
+          <a class="list-row-open" href="/targets/{{ t.id }}" aria-label="Open target details for {{ t.id }}" title="Open details"></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state"><h3>No targets yet</h3><p><a href="/targets/new">Create your first target</a></p></div>
+{% endif %}
+</div>
+
+<!-- Credentials -->
+<div id="panel-credentials" class="settings-panel" style="display:none">
+{% if credentials %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ credentials|length }} credential{{ 's' if credentials|length != 1 }}</h2>
+    <a href="/credentials/new" class="btn btn-primary btn-sm">+ New Credential</a>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Display Name</th><th>Provider</th><th>Scope</th><th>Owner</th><th>Created</th><th class="list-row-affordance-heading" aria-label="Open details"></th></tr></thead>
+    <tbody>
+      {% for c in credentials %}
+      <tr data-href="/credentials/{{ c.id }}">
+        <td><a href="/credentials/{{ c.id }}" class="uuid">{{ c.id[:8] }}</a></td>
+        <td>{{ c.display_name }}</td>
+        <td><span class="provider-tag {{ c.provider }}"><span class="dot"></span>{{ c.provider }}</span></td>
+        <td>{{ c.scope }}</td>
+        <td>{% if c.owner_user_id %}<a href="/users/{{ c.owner_user_id }}" class="uuid">{{ c.owner_user_id[:8] }}</a>{% else %}<span style="color:var(--text-muted)">shared</span>{% endif %}</td>
+        <td><span class="ts" data-ts="{{ c.created_at }}">{{ c.created_at[:19] if c.created_at else '—' }}</span></td>
+        <td class="list-row-affordance">
+          <a class="list-row-open" href="/credentials/{{ c.id }}" aria-label="Open credential details for {{ c.id }}" title="Open details"></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state"><h3>No credentials yet</h3><p><a href="/credentials/new">Add your first credential</a></p></div>
+{% endif %}
+</div>
+
+<!-- Runtime Profiles -->
+<div id="panel-profiles" class="settings-panel" style="display:none">
+{% if profiles %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ profiles|length }} profile{{ 's' if profiles|length != 1 }}</h2>
+    <a href="/runtime-profiles/new" class="btn btn-primary btn-sm">+ New Profile</a>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Allow Exploits</th><th>Settings</th><th>Created</th><th class="list-row-affordance-heading" aria-label="Open details"></th></tr></thead>
+    <tbody>
+      {% for p in profiles %}
+      <tr data-href="/runtime-profiles/{{ p.id }}">
+        <td><a href="/runtime-profiles/{{ p.id }}" class="uuid">{{ p.id[:8] }}</a></td>
+        <td>{{ p.name }}</td>
+        <td>{% if p.allow_exploits %}<span class="badge badge-critical">Yes</span>{% else %}<span class="badge badge-info">No</span>{% endif %}</td>
+        <td class="uuid">{{ p.settings | tojson | truncate(40) }}</td>
+        <td><span class="ts" data-ts="{{ p.created_at }}">{{ p.created_at[:19] if p.created_at else '—' }}</span></td>
+        <td class="list-row-affordance">
+          <a class="list-row-open" href="/runtime-profiles/{{ p.id }}" aria-label="Open runtime profile details for {{ p.id }}" title="Open details"></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state"><h3>No runtime profiles yet</h3><p><a href="/runtime-profiles/new">Create your first profile</a></p></div>
+{% endif %}
+</div>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.settings-panel').forEach(function(p) { p.style.display = 'none'; });
+  document.querySelectorAll('.settings-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.getElementById('panel-' + name).style.display = 'block';
+  document.getElementById('tab-' + name).classList.add('active');
+  history.replaceState(null, '', '/settings?tab=' + name);
+}
+var params = new URLSearchParams(window.location.search);
+var tab = params.get('tab');
+if (tab && document.getElementById('panel-' + tab)) showTab(tab);
+</script>
+{% endblock %}

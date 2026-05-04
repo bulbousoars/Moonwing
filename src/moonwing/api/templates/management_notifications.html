@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Email Notifications - Moonwing{% endblock %}
+{% block content %}
+<div class="ops-page-shell">
+<div class="page-header dashboard-header">
+  <div>
+    <h1>Email Notifications</h1>
+    <p>SMTP configuration and notification preferences</p>
+  </div>
+  <a href="/management/iam" class="btn">&larr; Management</a>
+</div>
+
+{% if flash_message %}
+<div class="flash-msg flash-{{ flash_type or 'info' }}">{{ flash_message }}</div>
+{% endif %}
+
+<section class="ops-status-strip">
+  <div>
+    <span>SMTP</span>
+    <strong>{{ 'Enabled' if smtp and smtp.enabled else ('Configured' if smtp and smtp.host else 'Not configured') }}</strong>
+  </div>
+  <div>
+    <span>Host</span>
+    <strong>{{ smtp.host if smtp and smtp.host else 'No server' }}</strong>
+  </div>
+  <div>
+    <span>Events</span>
+    <strong>{{ preferences | length }}</strong>
+  </div>
+  <div>
+    <span>Sender</span>
+    <strong>{{ smtp.from_name if smtp and smtp.from_name else 'Moonwing' }}</strong>
+  </div>
+</section>
+
+<div class="dashboard-grid">
+  <div class="ops-panel ops-panel-primary table-card-command">
+    <div class="table-card-header">
+      <div>
+        <h2>SMTP Configuration</h2>
+        <p>Mail server settings for outbound notifications</p>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        {% if smtp and smtp.host %}
+        <span class="badge badge-{{ 'completed' if smtp.enabled else 'info' }}">{{ 'Enabled' if smtp.enabled else 'Disabled' }}</span>
+        {% else %}
+        <span class="badge badge-info">Not configured</span>
+        {% endif %}
+      </div>
+    </div>
+    <form method="post" action="/management/notifications/smtp" class="notif-form">
+      <div class="notif-form-grid">
+        <div class="notif-field-pair notif-field-wide">
+          <div class="notif-field">
+            <label for="smtp-host">SMTP Host</label>
+            <input type="text" id="smtp-host" name="host" value="{{ smtp.host if smtp else '' }}" placeholder="smtp.gmail.com" required>
+          </div>
+          <div class="notif-field notif-field-port">
+            <label for="smtp-port">Port</label>
+            <input type="number" id="smtp-port" name="port" value="{{ smtp.port if smtp else '587' }}" required>
+          </div>
+          <p class="notif-help-text">Use 587 for STARTTLS or 465 for implicit SSL, depending on the mail provider.</p>
+        </div>
+        <div class="notif-field-group">
+          <div class="notif-field">
+            <label for="smtp-username">Username</label>
+            <input type="text" id="smtp-username" name="username" value="{{ smtp.username if smtp else '' }}" placeholder="user@domain.com">
+          </div>
+          <div class="notif-field">
+            <label for="smtp-password">Password</label>
+            <input type="password" id="smtp-password" name="password" placeholder="{{ 'Stored password' if smtp and smtp.encrypted_password else 'Enter password' }}">
+          </div>
+          <p class="notif-help-text">Leave password blank to keep the stored credential.</p>
+        </div>
+        <div class="notif-field-group">
+          <div class="notif-field">
+            <label for="smtp-from-address">From Address</label>
+            <input type="email" id="smtp-from-address" name="from_address" value="{{ smtp.from_address if smtp else '' }}" placeholder="moonwing@dugganco.com" required>
+          </div>
+          <div class="notif-field">
+            <label for="smtp-from-name">From Name</label>
+            <input type="text" id="smtp-from-name" name="from_name" value="{{ smtp.from_name if smtp else 'Moonwing' }}" placeholder="Moonwing">
+          </div>
+          <p class="notif-help-text">This is what recipients see in the From line.</p>
+        </div>
+      </div>
+      <div class="notif-form-row">
+        <label class="notif-toggle">
+          <input type="checkbox" name="use_tls" value="true" {{ 'checked' if not smtp or smtp.use_tls else '' }}>
+          <span>Use STARTTLS</span>
+        </label>
+        <label class="notif-toggle">
+          <input type="checkbox" name="enabled" value="true" {{ 'checked' if smtp and smtp.enabled else '' }}>
+          <span>Enable email notifications</span>
+        </label>
+      </div>
+      <div class="notif-form-actions">
+        <button type="submit" class="btn btn-primary">Save SMTP Settings</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if smtp and smtp.host %}
+<div class="dashboard-grid">
+  <div class="ops-panel">
+    <div class="table-card-header">
+      <div>
+        <h2>Test Connection</h2>
+        <p>Send a test email to verify your SMTP settings</p>
+      </div>
+    </div>
+    <form method="post" action="/management/notifications/smtp/test" class="notif-form">
+      <div class="ops-action-bar">
+        <div class="notif-field notif-field-fill">
+          <label for="test-recipient">Recipient</label>
+          <input type="email" id="test-recipient" name="test_recipient" placeholder="recipient@example.com" required>
+        </div>
+        <button type="submit" class="btn">Send Test Email</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="dashboard-grid">
+  <div class="ops-panel table-card-command">
+    <div class="table-card-header">
+      <div>
+        <h2>Event Notifications</h2>
+        <p>Choose which events trigger email alerts and who receives them</p>
+      </div>
+    </div>
+    <form method="post" action="/management/notifications/preferences" class="notif-form">
+      <div class="notif-preference-list">
+        {% for pref in preferences %}
+        <label class="notif-preference-row">
+          <span class="notif-preference-toggle">
+            <input type="checkbox" name="enabled_{{ pref.event_type }}" value="true" {{ 'checked' if pref.enabled else '' }}>
+          </span>
+          <span class="notif-preference-event">
+            <strong>{{ event_labels.get(pref.event_type, pref.event_type) }}</strong>
+            <small>{{ pref.event_type }}</small>
+          </span>
+          <span class="notif-preference-recipients">
+            <span class="notif-preference-recipient-label">Recipients</span>
+            <input type="text" name="recipients_{{ pref.event_type }}" value="{{ pref.recipient_emails | join(', ') if pref.recipient_emails else '' }}" placeholder="user@domain.com, team@domain.com" class="notif-recipients-input">
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="notif-form-actions">
+        <button type="submit" class="btn btn-primary">Save Preferences</button>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+{% endblock %}

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Artifact — Moonwing{% endblock %}
+{% block title %}Artifact {{ artifact.id }} - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>Artifact <span class="uuid">{{ artifact.id[:12] }}...</span></h1>
+  <h1>Artifact <span class="uuid">{{ artifact.id }}</span></h1>
   <p><span class="badge badge-info">{{ artifact.artifact_type }}</span></p>
 </div>
 
@@ -11,13 +11,14 @@
     <h3>Artifact Info</h3>
     <div class="detail-row"><span class="label">ID</span><span class="value uuid">{{ artifact.id }}</span></div>
     <div class="detail-row"><span class="label">Type</span><span class="value">{{ artifact.artifact_type }}</span></div>
-    <div class="detail-row"><span class="label">Object Key</span><span class="value uuid">{{ artifact.object_key }}</span></div>
-    <div class="detail-row"><span class="label">Target</span><span class="value">{% if artifact.target_id %}<a href="/targets/{{ artifact.target_id }}" class="uuid">{{ artifact.target_id[:8] }}...</a>{% else %}—{% endif %}</span></div>
-    <div class="detail-row"><span class="label">Created</span><span class="value">{{ artifact.created_at[:19] if artifact.created_at else '—' }}</span></div>
+    <div class="detail-row"><span class="label">Object Key</span><span class="value uuid uuid-full">{{ artifact.object_key }}</span></div>
+    <div class="detail-row"><span class="label">Target</span><span class="value">{% if artifact.target_id %}<a href="/targets/{{ artifact.target_id }}" class="uuid">{{ artifact.target_id[:8] }}...</a>{% else %}-{% endif %}</span></div>
+    <div class="detail-row"><span class="label">Created</span><span class="value">{{ artifact.created_at[:19] if artifact.created_at else '-' }}</span></div>
   </div>
-  <div class="detail-card">
-    <h3>Provenance</h3>
-    <div class="json-view">{{ artifact.provenance | tojson(indent=2) }}</div>
-  </div>
+</div>
+
+<div class="detail-card" style="margin-bottom:1.5rem">
+  <h3>Provenance</h3>
+  <div class="json-view">{{ artifact.provenance | tojson(indent=2) }}</div>
 </div>
 {% endblock %}

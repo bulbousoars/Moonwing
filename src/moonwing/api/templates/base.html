@@ -4,34 +4,195 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Moonwing{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <script>
+  (function() {
+    var allowedThemes = ['dark', 'light', 'cloudy', 'rainy', 'sunset', 'full_moon'];
+    var theme = 'dark';
+    try {
+      var saved = localStorage.getItem('moonwing_theme');
+      if (allowedThemes.indexOf(saved) !== -1) theme = saved;
+    } catch (err) {}
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+  </script>
+  <link rel="icon" type="image/png" href="/static/img/favicon.png">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260504-run-failure-reason">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;550;600;650;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
 <div class="layout">
   <nav class="sidebar">
-    <div class="sidebar-brand">
-      Moonwing
-      <small>Security Platform</small>
+    <a href="/" class="sidebar-brand">
+      <div class="sidebar-logo">
+        <img src="/static/img/moonwing-logo.png" alt="">
+      </div>
+      <div class="sidebar-brand-text">
+        <span class="name">Moonwing</span>
+        <span class="tagline">Security Platform</span>
+      </div>
+    </a>
+
+    <div class="sidebar-section">
+      <ul class="sidebar-nav">
+        <li>
+          <a href="/" class="{% if active == 'dashboard' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg>
+            Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="/runs/new" class="launch-btn {% if active == 'launch' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="7"/><path d="M8.5 7.5l4 2.5-4 2.5z" fill="currentColor" stroke="none"/></svg>
+            Launch Scan
+          </a>
+        </li>
+      </ul>
     </div>
-    <ul class="sidebar-nav">
-      <li><a href="/" class="{% if active == 'dashboard' %}active{% endif %}">Dashboard</a></li>
-      <li><a href="/runs/new" class="{% if active == 'launch' %}active{% endif %}" style="color:var(--accent)">+ Launch Scan</a></li>
-      <li><a href="/runs" class="{% if active == 'runs' %}active{% endif %}">Runs</a></li>
-      <li><a href="/findings" class="{% if active == 'findings' %}active{% endif %}">Findings</a></li>
-      <li><a href="/targets" class="{% if active == 'targets' %}active{% endif %}">Targets</a></li>
-      <li><a href="/credentials" class="{% if active == 'credentials' %}active{% endif %}">Credentials</a></li>
-      <li><a href="/runtime-profiles" class="{% if active == 'profiles' %}active{% endif %}">Runtime Profiles</a></li>
-      <li><a href="/artifacts" class="{% if active == 'artifacts' %}active{% endif %}">Artifacts</a></li>
-      <li><a href="/users" class="{% if active == 'users' %}active{% endif %}">Users</a></li>
-      <li><a href="/state-machine" class="{% if active == 'state-machine' %}active{% endif %}">State Machine</a></li>
-      <li><a href="/docs" target="_blank">API Docs</a></li>
-    </ul>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Analysis</div>
+      <ul class="sidebar-nav">
+        <li>
+          <a href="/runs" class="{% if active == 'runs' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 10h12M4 6h12M4 14h8"/></svg>
+            Runs
+          </a>
+        </li>
+        <li>
+          <a href="/findings" class="{% if active == 'findings' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3l7 12H3z"/><line x1="10" y1="9" x2="10" y2="11"/><circle cx="10" cy="13" r="0.5" fill="currentColor"/></svg>
+            Findings
+          </a>
+        </li>
+        <li>
+          <a href="/artifacts" class="{% if active == 'artifacts' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l6-3 6 3v8l-6 3-6-3z"/><path d="M4 6l6 3 6-3"/><line x1="10" y1="9" x2="10" y2="17"/></svg>
+            Artifacts
+          </a>
+        </li>
+        <li>
+          <a href="/sensors" class="{% if active == 'sensors' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="14" height="10" rx="2"/><path d="M7 17h6M10 14v3"/><circle cx="7" cy="9" r="1"/><path d="M10 8h4M10 11h3"/></svg>
+            Sensors
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">System</div>
+      <ul class="sidebar-nav">
+        <li>
+          <a href="/management/iam" class="{% if active == 'management' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="3"/><path d="M3 17c.7-3 2-4.5 4-4.5s3.3 1.5 4 4.5"/><path d="M13 4.5l2 1 2-1v4c0 2-1.3 3.4-3 4-1.7-.6-3-2-3-4z"/></svg>
+            Management
+          </a>
+        </li>
+        <li>
+          <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="3"/><path d="M10 2v2m0 12v2m-5.66-2.34l1.42-1.42m8.48-8.48l1.42-1.42M2 10h2m12 0h2M4.34 4.34l1.42 1.42m8.48 8.48l1.42 1.42"/></svg>
+            Settings
+          </a>
+        </li>
+        <li>
+          <a href="/state-machine" class="{% if active == 'state-machine' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="10" r="2.5"/><circle cx="15" cy="10" r="2.5"/><path d="M7.5 10h5"/><path d="M11 8l2 2-2 2"/></svg>
+            State Machine
+          </a>
+        </li>
+        <li>
+          <a href="/docs" target="_blank">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3h8l3 3v11a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M13 3v3h3"/><path d="M7 10h6M7 13h4"/></svg>
+            API Docs
+            <svg class="nav-external" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 2.5h-2v7h7v-2"/><path d="M7 2.5h2.5V5"/><path d="M5.5 6.5L9.5 2.5"/></svg>
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user-line">
+        <span class="sidebar-footer-dot"></span>
+        {% if current_user %}
+        <a href="/logout" style="color:inherit;text-decoration:none">{{ current_user.display_name }} · {{ current_user.role }}</a>
+        {% else %}
+        v0.1.0
+        {% endif %}
+      </div>
+      <label class="theme-switcher" for="theme-select">
+        <span>Theme</span>
+        <select id="theme-select">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="cloudy">Cloudy</option>
+          <option value="rainy">Rainy</option>
+          <option value="sunset">Sunset</option>
+          <option value="full_moon">Full Moon</option>
+        </select>
+      </label>
+    </div>
   </nav>
   <main class="main">
     {% block content %}{% endblock %}
   </main>
 </div>
+<script>
+/* ── Relative time helper ──────────────────────────── */
+function relativeTime(isoStr) {
+  if (!isoStr) return '—';
+  var d = new Date(isoStr);
+  var now = new Date();
+  var diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+  return d.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var allowedThemes = ['dark', 'light', 'cloudy', 'rainy', 'sunset', 'full_moon'];
+  var themeSelect = document.getElementById('theme-select');
+  function setTheme(theme) {
+    if (allowedThemes.indexOf(theme) === -1) theme = 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('moonwing_theme', theme); } catch (err) {}
+    if (themeSelect) themeSelect.value = theme;
+  }
+
+  setTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+  if (themeSelect) {
+    themeSelect.addEventListener('change', function() {
+      setTheme(themeSelect.value);
+    });
+  }
+
+  document.querySelectorAll('[data-ts]').forEach(function(el) {
+    var iso = el.getAttribute('data-ts');
+    el.textContent = relativeTime(iso);
+    el.title = iso.replace('T', ' ').substring(0, 19) + ' UTC';
+  });
+
+  /* Clickable rows */
+  document.querySelectorAll('tr[data-href]').forEach(function(row) {
+    row.classList.add('clickable');
+    row.addEventListener('click', function(e) {
+      if (e.target.tagName === 'A') return;
+      window.location = row.getAttribute('data-href');
+    });
+  });
+
+  /* JSON toggles */
+  document.querySelectorAll('.json-toggle').forEach(function(toggle) {
+    toggle.addEventListener('click', function() {
+      var body = toggle.nextElementSibling;
+      var expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', !expanded);
+      body.classList.toggle('open');
+    });
+  });
+});
+</script>
 </body>
 </html>

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Privileged Access - Moonwing{% endblock %}
+{% block content %}
+<div class="ops-page-shell">
+  <div class="page-header dashboard-header">
+    <div>
+      <h1>Privileged Access</h1>
+      <p>Time-bound administrative grants and review workflow readiness.</p>
+    </div>
+    <a href="/management/iam" class="btn">Management</a>
+  </div>
+
+  <section class="ops-status-strip">
+    <div>
+      <span>Active Grants</span>
+      <strong>{{ summary.active }}</strong>
+    </div>
+    <div>
+      <span>Pending</span>
+      <strong>{{ summary.pending }}</strong>
+    </div>
+    <div>
+      <span>Expired</span>
+      <strong>{{ summary.expired }}</strong>
+    </div>
+    <div>
+      <span>Model</span>
+      <strong>Ready</strong>
+    </div>
+  </section>
+
+  <div class="dashboard-grid ops-support-grid">
+    <section class="ops-panel ops-panel-primary">
+      <div class="table-card-header">
+        <div>
+          <h2>Access Flow</h2>
+          <p>Current data model supports grants, approvals, expiry, and audit events.</p>
+        </div>
+        <span class="badge badge-info">Read only</span>
+      </div>
+      <div class="privileged-flow">
+        <div>
+          <span>1</span>
+          <strong>Request</strong>
+          <small>User asks for elevated access with a reason.</small>
+        </div>
+        <div>
+          <span>2</span>
+          <strong>Approve</strong>
+          <small>Admin reviews scope and sets the expiration window.</small>
+        </div>
+        <div>
+          <span>3</span>
+          <strong>Expire</strong>
+          <small>Grant status and audit trail stay visible for review.</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="ops-panel">
+      <div class="table-card-header">
+        <div>
+          <h2>Grant Inventory</h2>
+          <p>Recent privileged access records.</p>
+        </div>
+      </div>
+      {% if grants %}
+      <div class="privileged-grant-list">
+        {% for grant in grants %}
+        <div class="privileged-grant-row">
+          <div>
+            <strong>{{ grant.permission }}</strong>
+            <span>{{ grant.user_email or grant.user_id }}</span>
+            {% if grant.reason %}<small>{{ grant.reason }}</small>{% endif %}
+          </div>
+          <span class="status-pill {% if grant.status == 'active' %}active{% else %}muted{% endif %}">{{ grant.status }}</span>
+          <time class="ts" data-ts="{{ grant.expires_at or grant.created_at }}">{{ grant.expires_at[:19] if grant.expires_at else 'No expiry' }}</time>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state compact-empty">
+        <h3>No grants yet</h3>
+        <p>Privileged access records will appear here when approval workflows are enabled.</p>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

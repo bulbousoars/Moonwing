@@ -43,8 +43,19 @@ open ports, "low" for outdated versions, "medium" for known vulnerabilities, \
 
 Output format:
 {{"findings": [
-  {{"title": "<finding title>", "severity": "<critical|high|medium|low|info>", \
-"evidence": ["<evidence>", ...]}},
+  {{
+    "title": "<finding title>",
+    "severity": "<critical|high|medium|low|info>",
+    "product": "<affected product or service, e.g. MinIO API, Portainer Agent>",
+    "affected_hosts": ["<host or IP>", "..."],
+    "affected_ports": ["<port/protocol>", "..."],
+    "description": "<what was found>",
+    "impact": "<why it matters>",
+    "remediation": "<specific fix>",
+    "confidence": "<low|medium|high>",
+    "references": ["<CVE, vendor doc, or relevant URL>", "..."],
+    "evidence": ["<evidence>", ...]
+  }},
   ...
 ]}}
 
@@ -59,8 +70,19 @@ SSRF, and insecure patterns.
 Output results as JSON:
 
 {{"findings": [
-  {{"title": "<finding title>", "severity": "<critical|high|medium|low|info>", \
-"evidence": ["<file:line or description>", ...]}},
+  {{
+    "title": "<finding title>",
+    "severity": "<critical|high|medium|low|info>",
+    "product": "<affected component or package>",
+    "affected_hosts": [],
+    "affected_ports": [],
+    "description": "<what was found>",
+    "impact": "<why it matters>",
+    "remediation": "<specific fix>",
+    "confidence": "<low|medium|high>",
+    "references": ["<CVE, CWE, docs, or relevant URL>", "..."],
+    "evidence": ["<file:line or description>", ...]
+  }},
   ...
 ]}}
 
@@ -80,13 +102,18 @@ def _get_prompt(job_family: str, source_ref: str, *, nmap_output: str = "") -> s
     return _SOURCE_HUNT_PROMPT.format(source_ref=source_ref)
 
 
-def run_nmap(target: str, *, timeout: int = 300) -> str:
+def run_nmap(target: str, *, ports: str | None = None, timeout: int = 300) -> str:
     """Run nmap against a target and return the raw text output.
 
     This is called directly by the worker — not through Claude — to avoid
     the CLI's safety refusals on network scanning prompts.
     """
-    cmd = ["nmap", "-sV", "-sC", "--top-ports", "1000", "-T4", target]
+    cmd = ["nmap", "-sV", "-sC"]
+    if ports:
+        cmd.extend(["-p", ports])
+    else:
+        cmd.extend(["--top-ports", "1000"])
+    cmd.extend(["-T4", target])
     logger.info("running nmap: %s", " ".join(cmd))
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -167,20 +194,35 @@ def build_clearwing_command(
         binary = settings.codex_cli_binary
         return [
             binary,
-            "--quiet",        # non-interactive
-            "--model", model,
-            "--approval-mode", "full-auto",
+            "exec",           # non-interactive subcommand
+            "--json",         # JSONL output to stdout
+            "-m", model,
+            "--full-auto",
+            "--skip-git-repo-check",
+            "--ephemeral",
             prompt,
+        ]
+    elif provider == "google":
+        binary = settings.gemini_cli_binary
+        return [
+            binary,
+            "-p", prompt,       # non-interactive headless mode
+            "-o", "json",       # JSON output
+            "-m", model,
+            "--yolo",           # auto-approve all actions
         ]
     elif provider == "ollama":
         # For ollama, use codex CLI pointed at local endpoint
         binary = settings.codex_cli_binary
         return [
             binary,
-            "--quiet",
-            "--model", model,
-            "--provider", "ollama",
-            "--approval-mode", "full-auto",
+            "exec",
+            "--json",
+            "-m", model,
+            "--local-provider", "ollama",
+            "--full-auto",
+            "--skip-git-repo-check",
+            "--ephemeral",
             prompt,
         ]
     else:

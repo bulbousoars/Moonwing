@@ -1,122 +1,148 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Moonwing{% endblock %}
+{% block title %}Dashboard - Moonwing{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Dashboard</h1>
-  <p>Moonwing security platform overview</p>
+<div class="page-header dashboard-header">
+  <div>
+    <h1>Dashboard</h1>
+    <p>Security scan posture, run health, and coverage</p>
+  </div>
+  <a href="/runs/new" class="btn btn-primary">Launch Scan</a>
 </div>
 
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="label">Total Runs</div>
-    <div class="value accent">{{ stats.total_runs }}</div>
+<section class="dashboard-control" aria-label="Moonwing status overview">
+  <div class="kpi-rail">
+    <a href="/findings" class="kpi-cell kpi-risk">
+      <span class="kpi-label">Actionable Risk</span>
+      <strong>{{ stats.critical_findings + stats.high_findings }}</strong>
+      <small>{{ stats.critical_findings }} critical / {{ stats.high_findings }} high</small>
+    </a>
+    <a href="/runs" class="kpi-cell">
+      <span class="kpi-label">Runs</span>
+      <strong>{{ stats.total_runs }}</strong>
+      <small>{{ stats.active_runs }} active</small>
+    </a>
+    <a href="/runs" class="kpi-cell">
+      <span class="kpi-label">Failures</span>
+      <strong class="critical">{{ stats.failed_runs }}</strong>
+      <small>{{ status_counts.needs_review or 0 }} need review</small>
+    </a>
+    <a href="/settings?tab=targets" class="kpi-cell">
+      <span class="kpi-label">Coverage</span>
+      <strong>{{ stats.total_targets }}</strong>
+      <small>{{ stats.total_artifacts }} artifacts</small>
+    </a>
   </div>
-  <div class="stat-card">
-    <div class="label">Completed</div>
-    <div class="value success">{{ stats.completed_runs }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Failed</div>
-    <div class="value critical">{{ stats.failed_runs }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Queued / Running</div>
-    <div class="value accent">{{ stats.active_runs }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Total Findings</div>
-    <div class="value high">{{ stats.total_findings }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Critical</div>
-    <div class="value critical">{{ stats.critical_findings }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">High</div>
-    <div class="value high">{{ stats.high_findings }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Targets</div>
-    <div class="value accent">{{ stats.total_targets }}</div>
-  </div>
-</div>
 
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="label">Users</div>
-    <div class="value">{{ stats.total_users }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Credentials</div>
-    <div class="value">{{ stats.total_credentials }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Runtime Profiles</div>
-    <div class="value">{{ stats.total_profiles }}</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Artifacts</div>
-    <div class="value">{{ stats.total_artifacts }}</div>
-  </div>
-</div>
+  <div class="control-boards">
+    <div class="control-board severity-board">
+      <div class="board-header">
+        <h2>Severity Distribution</h2>
+        <a href="/findings">Open findings</a>
+      </div>
+      <div class="severity-bars">
+        <a href="/findings" class="severity-bar critical" style="--value: {{ severity_counts.critical or 0 }}; --total: {{ stats.total_findings or 1 }};">
+          <span>Critical</span><div><i></i></div><strong>{{ severity_counts.critical or 0 }}</strong>
+        </a>
+        <a href="/findings" class="severity-bar high" style="--value: {{ severity_counts.high or 0 }}; --total: {{ stats.total_findings or 1 }};">
+          <span>High</span><div><i></i></div><strong>{{ severity_counts.high or 0 }}</strong>
+        </a>
+        <a href="/findings" class="severity-bar medium" style="--value: {{ severity_counts.medium or 0 }}; --total: {{ stats.total_findings or 1 }};">
+          <span>Medium</span><div><i></i></div><strong>{{ severity_counts.medium or 0 }}</strong>
+        </a>
+        <a href="/findings" class="severity-bar low" style="--value: {{ severity_counts.low or 0 }}; --total: {{ stats.total_findings or 1 }};">
+          <span>Low</span><div><i></i></div><strong>{{ severity_counts.low or 0 }}</strong>
+        </a>
+        <a href="/findings" class="severity-bar info" style="--value: {{ severity_counts.info or 0 }}; --total: {{ stats.total_findings or 1 }};">
+          <span>Info</span><div><i></i></div><strong>{{ severity_counts.info or 0 }}</strong>
+        </a>
+      </div>
+    </div>
 
-{% if recent_runs %}
-<div class="table-card">
-  <div class="table-card-header">
-    <h2>Recent Runs</h2>
-    <a href="/runs" class="btn">View All</a>
+    <div class="control-board run-board">
+      <div class="board-header">
+        <h2>Run Health</h2>
+        <a href="/runs">Open runs</a>
+      </div>
+      <div class="run-health-list">
+        <div><span class="status-dot completed"></span><label>Completed</label><strong>{{ status_counts.completed or 0 }}</strong></div>
+        <div><span class="status-dot running"></span><label>Queued / Running</label><strong>{{ stats.active_runs }}</strong></div>
+        <div><span class="status-dot failed"></span><label>Failed</label><strong>{{ status_counts.failed or 0 }}</strong></div>
+        <div><span class="status-dot review"></span><label>Needs Review</label><strong>{{ status_counts.needs_review or 0 }}</strong></div>
+      </div>
+      <div class="coverage-strip">
+        <a href="/settings?tab=credentials"><strong>{{ stats.total_credentials }}</strong><span>Credentials</span></a>
+        <a href="/settings?tab=profiles"><strong>{{ stats.total_profiles }}</strong><span>Profiles</span></a>
+        <a href="/artifacts"><strong>{{ stats.total_artifacts }}</strong><span>Artifacts</span></a>
+      </div>
+    </div>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Job Family</th>
-        <th>Status</th>
-        <th>Provider / Model</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in recent_runs %}
-      <tr>
-        <td><a href="/runs/{{ r.id }}" class="uuid">{{ r.id[:8] }}...</a></td>
-        <td>{{ r.job_family }}</td>
-        <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
-        <td>{{ r.provider }} / {{ r.model }}</td>
-        <td>{{ r.created_at[:19] if r.created_at else '—' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
+</section>
 
-{% if recent_findings %}
-<div class="table-card">
-  <div class="table-card-header">
-    <h2>Recent Findings</h2>
-    <a href="/findings" class="btn">View All</a>
+<section class="dashboard-grid">
+  {% if recent_runs %}
+  <div class="table-card table-card-command">
+    <div class="table-card-header">
+      <div>
+        <h2>Recent Runs</h2>
+        <p>Latest execution state changes</p>
+      </div>
+      <a href="/runs" class="btn">View All</a>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Job Family</th>
+          <th>Status</th>
+          <th>Provider / Model</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recent_runs %}
+        <tr>
+          <td><a href="/runs/{{ r.id }}" class="uuid uuid-full">{{ r.id }}</a></td>
+          <td>{{ r.job_family }}</td>
+          <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+          <td>{{ r.provider }} / {{ r.model }}</td>
+          <td>{{ r.created_at[:19] if r.created_at else '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>Severity</th>
-        <th>Run</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for f in recent_findings %}
-      <tr>
-        <td>{{ f.title }}</td>
-        <td><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
-        <td><a href="/runs/{{ f.run_id }}" class="uuid">{{ f.run_id[:8] }}...</a></td>
-        <td>{{ f.created_at[:19] if f.created_at else '—' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
+  {% endif %}
+
+  {% if recent_findings %}
+  <div class="table-card table-card-command">
+    <div class="table-card-header">
+      <div>
+        <h2>Recent Findings</h2>
+        <p>Newest normalized results</p>
+      </div>
+      <a href="/findings" class="btn">View All</a>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Severity</th>
+          <th>Run</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in recent_findings %}
+        <tr>
+          <td>{{ f.title }}</td>
+          <td><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
+          <td><a href="/runs/{{ f.run_id }}" class="uuid uuid-full">{{ f.run_id }}</a></td>
+          <td>{{ f.created_at[:19] if f.created_at else '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

@@ -1,28 +1,66 @@
 {% extends "base.html" %}
-{% block title %}Run {{ run.id[:8] }}... — Moonwing{% endblock %}
+{% block title %}Run {{ run.id }} - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>Run <span class="uuid">{{ run.id }}</span></h1>
-  <p>{{ run.job_family }} — <span class="badge badge-{{ run.status }}">{{ run.status }}</span></p>
+  <p>{{ run.job_family }} - <span id="run-status-badge" class="badge badge-{{ run.status }}">{{ run.status }}</span></p>
 </div>
+
+<section
+  class="run-live-panel {% if run.is_active %}is-active{% endif %}"
+  data-activity-url="/api/runs/{{ run.id }}/activity"
+  data-initial-active="{{ 'true' if run.is_active else 'false' }}"
+  aria-label="Run activity"
+>
+  <div class="run-live-header">
+    <div>
+      <h2>Run Activity</h2>
+      <p id="run-activity-state">{{ 'Live updates active' if run.is_active else 'Run activity log' }}</p>
+    </div>
+    <div class="run-active-animation" aria-hidden="true">
+      <span></span>
+    </div>
+  </div>
+  <ol id="run-log-feed" class="run-log-feed" aria-live="polite">
+    {% for event in run.activity %}
+    <li class="run-log-entry level-{{ event.level or 'info' }}">
+      <span class="run-log-time">{{ event.timestamp }}</span>
+      <span class="run-log-stage">{{ event.stage }}</span>
+      <span class="run-log-message">{{ event.message }}</span>
+    </li>
+    {% else %}
+    <li class="run-log-empty">No run activity has been recorded yet.</li>
+    {% endfor %}
+  </ol>
+</section>
 
 <div class="detail-grid">
   <div class="detail-card">
     <h3>Run Info</h3>
     <div class="detail-row"><span class="label">Job Family</span><span class="value">{{ run.job_family }}</span></div>
-    <div class="detail-row"><span class="label">Status</span><span class="value"><span class="badge badge-{{ run.status }}">{{ run.status }}</span></span></div>
+    <div class="detail-row"><span class="label">Status</span><span class="value"><span id="run-status-inline" class="badge badge-{{ run.status }}">{{ run.status }}</span></span></div>
     <div class="detail-row"><span class="label">Provider</span><span class="value">{{ run.provider }}</span></div>
     <div class="detail-row"><span class="label">Model</span><span class="value">{{ run.model }}</span></div>
-    <div class="detail-row"><span class="label">Created</span><span class="value">{{ run.created_at[:19] if run.created_at else '—' }}</span></div>
+    <div class="detail-row"><span class="label">Created</span><span class="value">{{ run.created_at[:19] if run.created_at else '-' }}</span></div>
   </div>
   <div class="detail-card">
     <h3>References</h3>
     <div class="detail-row"><span class="label">User</span><span class="value"><a href="/users/{{ run.user_id }}" class="uuid">{{ run.user_id[:8] }}...</a></span></div>
     <div class="detail-row"><span class="label">Credential</span><span class="value"><a href="/credentials/{{ run.credential_id }}" class="uuid">{{ run.credential_id[:8] }}...</a></span></div>
     <div class="detail-row"><span class="label">Runtime Profile</span><span class="value"><a href="/runtime-profiles/{{ run.runtime_profile_id }}" class="uuid">{{ run.runtime_profile_id[:8] }}...</a></span></div>
-    <div class="detail-row"><span class="label">Target</span><span class="value">{% if run.target_id %}<a href="/targets/{{ run.target_id }}" class="uuid">{{ run.target_id[:8] }}...</a>{% else %}—{% endif %}</span></div>
+    <div class="detail-row"><span class="label">Target</span><span class="value">{% if run.target_id %}<a href="/targets/{{ run.target_id }}" class="uuid">{{ run.target_id[:8] }}...</a>{% else %}-{% endif %}</span></div>
   </div>
 </div>
+
+{% if run.execution_snapshot and run.execution_snapshot.failure %}
+<section class="run-failure-panel" aria-label="Failure reason">
+  <div>
+    <h2>Failure Reason</h2>
+    <p>{{ run.execution_snapshot.failure.message }}</p>
+  </div>
+  <span>{{ run.execution_snapshot.failure.type }}</span>
+</section>
+{% endif %}
 
 {% if run.execution_snapshot %}
 <div class="detail-card" style="margin-bottom:1.5rem">
@@ -51,7 +89,7 @@
         <td><a href="/findings/{{ f.id }}">{{ f.title }}</a></td>
         <td><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
         <td>{{ f.evidence_refs|length }} ref{{ 's' if f.evidence_refs|length != 1 }}</td>
-        <td>{{ f.created_at[:19] if f.created_at else '—' }}</td>
+        <td>{{ f.created_at[:19] if f.created_at else '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -63,4 +101,90 @@
   <p>This run has not produced any findings yet.</p>
 </div>
 {% endif %}
+
+<script>
+(function () {
+  var panel = document.querySelector('.run-live-panel');
+  if (!panel) return;
+
+  var activityUrl = panel.getAttribute('data-activity-url');
+  var feed = document.getElementById('run-log-feed');
+  var state = document.getElementById('run-activity-state');
+  var statusBadges = [
+    document.getElementById('run-status-badge'),
+    document.getElementById('run-status-inline')
+  ].filter(Boolean);
+  var lastSignature = '';
+
+  function setStatus(status, active) {
+    statusBadges.forEach(function (badge) {
+      badge.className = 'badge badge-' + status;
+      badge.textContent = status;
+    });
+    panel.classList.toggle('is-active', active);
+    state.textContent = active ? 'Live updates active' : 'Run activity log';
+  }
+
+  function renderActivity(activity) {
+    var signature = JSON.stringify(activity || []);
+    if (signature === lastSignature) return;
+    lastSignature = signature;
+    feed.innerHTML = '';
+    if (!activity || activity.length === 0) {
+      var empty = document.createElement('li');
+      empty.className = 'run-log-empty';
+      empty.textContent = 'No run activity has been recorded yet.';
+      feed.appendChild(empty);
+      return;
+    }
+    activity.forEach(function (event) {
+      var item = document.createElement('li');
+      item.className = 'run-log-entry level-' + (event.level || 'info');
+
+      var time = document.createElement('span');
+      time.className = 'run-log-time';
+      time.textContent = event.timestamp || '';
+
+      var stage = document.createElement('span');
+      stage.className = 'run-log-stage';
+      stage.textContent = event.stage || 'run';
+
+      var message = document.createElement('span');
+      message.className = 'run-log-message';
+      message.textContent = event.message || '';
+
+      item.appendChild(time);
+      item.appendChild(stage);
+      item.appendChild(message);
+      feed.appendChild(item);
+    });
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  function pollActivity() {
+    fetch(activityUrl, { headers: { 'Accept': 'application/json' } })
+      .then(function (response) {
+        if (!response.ok) throw new Error('activity request failed');
+        return response.json();
+      })
+      .then(function (payload) {
+        setStatus(payload.status, payload.active);
+        renderActivity(payload.activity);
+        if (payload.active) {
+          setTimeout(pollActivity, 2000);
+        }
+      })
+      .catch(function () {
+        state.textContent = 'Live updates paused';
+        if (panel.getAttribute('data-initial-active') === 'true') {
+          setTimeout(pollActivity, 5000);
+        }
+      });
+  }
+
+  if (panel.getAttribute('data-initial-active') === 'true') {
+    setTimeout(pollActivity, 1000);
+  }
+})();
+</script>
 {% endblock %}

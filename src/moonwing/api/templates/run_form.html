@@ -1,155 +1,93 @@
 {% extends "base.html" %}
-{% block title %}Launch Scan — Moonwing{% endblock %}
+{% block title %}Launch Scan - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>Launch Scan</h1>
-  <p>Queue a new Clearwing scan run</p>
+  <p>Choose whether Moonwing should inspect a reachable service or analyze source material.</p>
 </div>
 
-<div class="detail-card" style="max-width:700px">
+<div class="detail-card" style="max-width:760px">
   <form method="post" action="/runs/new">
-    <div class="detail-grid" style="margin-bottom:0">
-      <div>
-        <div class="form-group">
-          <label for="job_family">Job Family</label>
-          <select id="job_family" name="job_family">
-            <option value="network_scan">Network Scan</option>
-            <option value="source_hunt">Source Hunt</option>
-          </select>
+    <div class="form-group">
+      <label for="job_family">Job Family</label>
+      <select id="job_family" name="job_family" required>
+        <option value="network_scan">Network Scan</option>
+        <option value="source_hunt">Source Hunt</option>
+      </select>
+      <div class="job-family-help">
+        <div>
+          <strong>Network Scan</strong>
+          <span>What is exposed and reachable. Use for websites, hosts, VMs, and services.</span>
         </div>
-        <div class="form-group">
-          <label for="target_id">Target</label>
-          <select id="target_id" name="target_id">
-            <option value="">— None (use source_ref in snapshot) —</option>
-            {% for t in targets %}
-            <option value="{{ t.id }}" {% if preselect_target == t.id %}selected{% endif %}>{{ t.display_name }} ({{ t.target_type }})</option>
-            {% endfor %}
-            <option value="__new__">+ Add New Target...</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="user_id">User</label>
-          <select id="user_id" name="user_id" required>
-            {% for u in users %}
-            <option value="{{ u.id }}">{{ u.display_name }} ({{ u.email }})</option>
-            {% endfor %}
-            <option value="__new__">+ Add New User...</option>
-          </select>
-        </div>
-      </div>
-      <div>
-        <div class="form-group">
-          <label for="credential_id">Credential</label>
-          <select id="credential_id" name="credential_id" required>
-            {% for c in credentials %}
-            <option value="{{ c.id }}">{{ c.display_name }} ({{ c.provider }})</option>
-            {% endfor %}
-            <option value="__new__">+ Add New Credential...</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="runtime_profile_id">Runtime Profile</label>
-          <select id="runtime_profile_id" name="runtime_profile_id" required>
-            {% for p in profiles %}
-            <option value="{{ p.id }}">{{ p.name }}</option>
-            {% endfor %}
-            <option value="__new__">+ Add New Profile...</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="provider">Provider</label>
-          <select id="provider" name="provider" onchange="updateModels()">
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="openrouter">OpenRouter</option>
-            <option value="ollama">Ollama</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="model">Model</label>
-          <select id="model" name="model"></select>
-        </div>
-        <div class="form-group">
-          <label for="execution_mode">Execution Mode</label>
-          <select id="execution_mode" name="execution_mode">
-            <option value="api">API (direct provider call)</option>
-            <option value="cli">CLI (claude/codex local tool)</option>
-          </select>
-          <small style="color:var(--text-muted)">API mode calls provider APIs directly. CLI mode invokes locally installed claude or codex.</small>
+        <div>
+          <strong>Source Hunt</strong>
+          <span>What is wrong in the code. Use for repositories, binaries, SBOMs, and source artifacts.</span>
         </div>
       </div>
     </div>
-    <button type="submit" class="btn btn-primary" style="margin-top:1rem">Queue Run</button>
+
+    <div class="form-group">
+      <label for="target_id">Target</label>
+      <select id="target_id" name="target_id">
+        <option value="">No saved target</option>
+        {% for target in targets %}
+        <option value="{{ target.id }}" {% if preselect_target == target.id %}selected{% endif %}>{{ target.display_name }} ({{ target.target_type }})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="user_id">Run As</label>
+      <select id="user_id" name="user_id" required>
+        {% for user in users %}
+        <option value="{{ user.id }}">{{ user.display_name }} ({{ user.email }})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="credential_id">Credential</label>
+      <select id="credential_id" name="credential_id" required>
+        {% for credential in credentials %}
+        <option value="{{ credential.id }}">{{ credential.display_name }} ({{ credential.provider }})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="runtime_profile_id">Runtime Profile</label>
+      <select id="runtime_profile_id" name="runtime_profile_id" required>
+        {% for profile in profiles %}
+        <option value="{{ profile.id }}">{{ profile.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="provider">Provider</label>
+      <select id="provider" name="provider">
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="google">Google</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="ollama">Ollama</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="model">Model</label>
+      <input id="model" name="model" value="gpt-5.5" required>
+    </div>
+
+    <div class="form-group">
+      <label for="execution_mode">Execution Mode</label>
+      <select id="execution_mode" name="execution_mode">
+        <option value="api">API</option>
+        <option value="cli">CLI</option>
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Launch Scan</button>
   </form>
 </div>
-
-{% if not users %}
-<div class="empty-state" style="margin-top:2rem">
-  <h3>No users found</h3>
-  <p>You need at least one <a href="/users/new">user</a>, one <a href="/credentials/new">credential</a>, and one <a href="/runtime-profiles/new">runtime profile</a> to launch a scan.</p>
-</div>
-{% endif %}
-
-<script>
-const MODELS = {
-  openai: [
-    {value: 'gpt-4o', label: 'GPT-4o'},
-    {value: 'gpt-4o-mini', label: 'GPT-4o Mini'},
-    {value: 'gpt-4.1', label: 'GPT-4.1'},
-    {value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini'},
-    {value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano'},
-    {value: 'o3', label: 'o3'},
-    {value: 'o4-mini', label: 'o4-mini'},
-  ],
-  anthropic: [
-    {value: 'claude-opus-4-6', label: 'Claude Opus 4.6'},
-    {value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6'},
-    {value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5'},
-  ],
-  openrouter: [
-    {value: 'openai/gpt-4o', label: 'GPT-4o (via OpenRouter)'},
-    {value: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (via OpenRouter)'},
-    {value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro (via OpenRouter)'},
-    {value: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick (via OpenRouter)'},
-  ],
-  ollama: [
-    {value: 'llama3.1', label: 'Llama 3.1'},
-    {value: 'mistral', label: 'Mistral'},
-    {value: 'codellama', label: 'Code Llama'},
-    {value: 'deepseek-r1', label: 'DeepSeek R1'},
-  ],
-};
-
-function updateModels() {
-  const provider = document.getElementById('provider').value;
-  const modelSelect = document.getElementById('model');
-  const models = MODELS[provider] || [];
-  modelSelect.innerHTML = '';
-  models.forEach(function(m) {
-    const opt = document.createElement('option');
-    opt.value = m.value;
-    opt.textContent = m.label;
-    modelSelect.appendChild(opt);
-  });
-}
-
-// "Add new" redirect handlers
-const redirects = {
-  target_id: '/targets/new',
-  user_id: '/users/new',
-  credential_id: '/credentials/new',
-  runtime_profile_id: '/runtime-profiles/new',
-};
-
-Object.keys(redirects).forEach(function(id) {
-  document.getElementById(id).addEventListener('change', function() {
-    if (this.value === '__new__') {
-      window.location.href = redirects[id];
-    }
-  });
-});
-
-// Init model dropdown on page load
-updateModels();
-</script>
 {% endblock %}

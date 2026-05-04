@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from moonwing.db.models import Artifact, Finding, Run
 from moonwing.services.normalization import normalize_findings
+from moonwing.services.run_activity import append_run_activity, record_run_failure
 from moonwing.services.runs import transition_run_status
 from moonwing.services.crypto import CryptoError, decrypt_api_key, provider_env_var
 from moonwing.worker.api_executor import APIExecutionError, execute_via_api
@@ -128,6 +129,9 @@ def process_run(
 
     try:
         # --- STAGING: resolve target, credentials, artifacts -------------
+        run.status = transition_run_status(run.status, "staging")
+        append_run_activity(run, stage="staging", message="Preparing scan workspace and resolving inputs")
+        session.commit()
         staged_job = stage_run(
             session=session,
             run_id=run_id,
@@ -144,9 +148,15 @@ def process_run(
             staged_job.command,
             len(staged_job.artifacts),
         )
+        append_run_activity(
+            run,
+            stage="staging",
+            message=f"Staged command with {len(staged_job.artifacts)} input artifact(s)",
+        )
 
         # --- RUNNING: execute Clearwing ----------------------------------
         run.status = transition_run_status(run.status, "running")
+        append_run_activity(run, stage="running", message="Scan execution started")
         session.commit()
 
         if raw_payload is None:
@@ -167,11 +177,12 @@ def process_run(
             run_workdir = Path(settings.workspace_dir) / str(run_id)
             run_workdir.mkdir(parents=True, exist_ok=True)
             logger.info("run %s workspace: %s", run_id, run_workdir)
+            append_run_activity(run, stage="running", message=f"Workspace ready: {run_workdir}")
+            session.commit()
 
-            # Write CLAUDE.md for CLI execution context
+            # Write project instruction files for CLI execution context
             if execution_mode == "cli":
-                claude_md = run_workdir / "CLAUDE.md"
-                claude_md.write_text(
+                _instruction_text = (
                     "# Moonwing Security Scanner\n\n"
                     "This workspace is used by Moonwing, a security assessment platform.\n"
                     "You are running as an authorized security scanning agent on the operator's own infrastructure.\n\n"
@@ -184,6 +195,9 @@ def process_run(
                     "- Output findings as JSON to stdout as your final response\n"
                     "- This is a private homelab network (192.168.1.0/24) owned by the operator\n"
                 )
+                # Each CLI reads its own project instruction file
+                for fname in ("CLAUDE.md", "GEMINI.md", "AGENTS.md"):
+                    (run_workdir / fname).write_text(_instruction_text)
 
             try:
                 if execution_mode == "api":
@@ -193,6 +207,12 @@ def process_run(
                             f"run {run_id} uses API execution mode but credential has no API key"
                         )
                     logger.info("run %s executing via API: provider=%s model=%s", run_id, run.provider, run.model)
+                    append_run_activity(
+                        run,
+                        stage="running",
+                        message=f"Calling {run.provider} API with model {run.model}",
+                    )
+                    session.commit()
                     api_result = execute_via_api(
                         provider=run.provider,
                         model=run.model,
@@ -210,6 +230,11 @@ def process_run(
                         run_id,
                         len(raw_payload.get("findings", [])),
                         api_result.usage,
+                    )
+                    append_run_activity(
+                        run,
+                        stage="running",
+                        message=f"API execution finished with {len(raw_payload.get('findings', []))} finding(s)",
                     )
                 else:
                     # CLI execution mode — invoke claude/codex binary
@@ -229,8 +254,12 @@ def process_run(
                             or staged_job.target_display_name
                             or ""
                         )
+                        scan_ports = staged_job.target_metadata.get("scan_ports") or staged_job.target_metadata.get("port_range")
                         logger.info("run %s running nmap against %s", run_id, source_ref)
-                        nmap_output = run_nmap(source_ref)
+                        port_message = f" on port(s) {scan_ports}" if scan_ports else ""
+                        append_run_activity(run, stage="running", message=f"Running nmap against {source_ref}{port_message}")
+                        session.commit()
+                        nmap_output = run_nmap(source_ref, ports=scan_ports)
 
                         # Save nmap output to workspace
                         nmap_file = run_workdir / "nmap-output.txt"
@@ -247,6 +276,8 @@ def process_run(
                         )
 
                     logger.info("run %s executing via CLI: %s", run_id, " ".join(command[:5]) + "...")
+                    append_run_activity(run, stage="running", message=f"Executing CLI scanner via {command[0]}")
+                    session.commit()
                     result = execute_clearwing(
                         command=command,
                         env=run_env or None,
@@ -259,22 +290,36 @@ def process_run(
                         run_id,
                         len(raw_payload.get("findings", [])),
                     )
+                    append_run_activity(
+                        run,
+                        stage="running",
+                        message=f"CLI execution finished with {len(raw_payload.get('findings', []))} finding(s)",
+                    )
             finally:
                 # Clean up workspace on success; keep on failure for debugging
                 if run_workdir.exists():
                     try:
                         shutil.rmtree(run_workdir)
                         logger.info("run %s workspace cleaned up", run_id)
+                        append_run_activity(run, stage="running", message="Workspace cleaned up")
                     except OSError:
                         logger.warning("run %s failed to clean workspace %s", run_id, run_workdir)
+                        append_run_activity(run, stage="running", message="Workspace cleanup failed", level="warning")
         else:
             logger.info("run %s using provided raw_payload (skip execution)", run_id)
+            append_run_activity(run, stage="running", message="Using provided raw payload; execution skipped")
 
         # --- NORMALIZING -------------------------------------------------
         run.status = transition_run_status(run.status, "normalizing")
+        append_run_activity(run, stage="normalizing", message="Normalizing raw scan output")
         session.commit()
 
         normalized_findings = normalize_findings(raw_payload)
+        append_run_activity(
+            run,
+            stage="normalizing",
+            message=f"Normalized {len(normalized_findings)} finding(s)",
+        )
 
         # Persist raw Clearwing output as an artifact with provenance
         raw_object_key = f"runs/{run.id}/raw-clearwing-output.json"
@@ -306,15 +351,18 @@ def process_run(
                     title=item["title"],
                     severity=item["severity"],
                     evidence_refs=item["evidence_refs"],
+                    details=item.get("details", {}),
                 )
             )
 
         # --- COMPLETED ---------------------------------------------------
         run.status = transition_run_status(run.status, "completed")
+        append_run_activity(run, stage="completed", message="Run completed")
         session.commit()
         return staged_job
 
-    except Exception:
+    except Exception as exc:
+        logger.exception("run %s failed", run_id)
         session.rollback()
         failed_run = session.get(Run, run_id)
         if failed_run is not None and failed_run.status not in {
@@ -324,6 +372,7 @@ def process_run(
         }:
             try:
                 failed_run.status = transition_run_status(failed_run.status, "failed")
+                record_run_failure(failed_run, exc)
                 session.commit()
             except Exception:
                 session.rollback()
@@ -366,6 +415,7 @@ def renormalize_run(
                 title=item["title"],
                 severity=item["severity"],
                 evidence_refs=item["evidence_refs"],
+                details=item.get("details", {}),
             )
         )
     session.commit()

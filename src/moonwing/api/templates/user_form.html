@@ -1,21 +1,66 @@
 {% extends "base.html" %}
-{% block title %}New User — Moonwing{% endblock %}
+{% block title %}New User - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>New User</h1>
+  <p>Create an interactive user or service account.</p>
 </div>
 
-<div class="detail-card" style="max-width:600px">
+<div class="detail-card" style="max-width:680px">
   <form method="post" action="/users/new">
     <div class="form-group">
-      <label for="email">Email</label>
-      <input type="email" id="email" name="email" required placeholder="user@example.com">
+      <label for="email">Username or Email</label>
+      <input type="text" id="email" name="email" required placeholder="jane or jane@example.com">
     </div>
     <div class="form-group">
       <label for="display_name">Display Name</label>
       <input type="text" id="display_name" name="display_name" required placeholder="Jane Doe">
     </div>
+    <div class="setup-grid">
+      <div class="form-group">
+        <label for="role">Role</label>
+        <select id="role" name="role" class="filter-select" onchange="updateRoleDesc()">
+          {% for r in roles %}
+          <option value="{{ r.value }}" {% if r.value == 'viewer' %}selected{% endif %}>{{ r.label }}</option>
+          {% endfor %}
+        </select>
+        <small id="role-desc" class="role-description">
+          {% for r in roles %}{% if r.value == 'viewer' %}{{ r.description }}{% endif %}{% endfor %}
+        </small>
+      </div>
+      <div class="form-group">
+        <label for="status">Status</label>
+        <select id="status" name="status" class="filter-select">
+          <option value="active">Active</option>
+          <option value="disabled">Disabled</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="password">Initial Password</label>
+      <input type="password" id="password" name="password" autocomplete="new-password">
+      <small>Required for interactive users. Leave blank for service accounts.</small>
+    </div>
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="is_service_account" value="true">
+        Service account
+      </label>
+      <small>Service accounts cannot sign in through the UI. Create an API token after saving.</small>
+    </div>
     <button type="submit" class="btn btn-primary">Create User</button>
   </form>
 </div>
+
+<script>
+var roleDescriptions = {
+  {% for r in roles %}"{{ r.value }}": "{{ r.description }}"{% if not loop.last %},{% endif %}
+  {% endfor %}
+};
+function updateRoleDesc() {
+  var sel = document.getElementById('role');
+  var desc = document.getElementById('role-desc');
+  desc.textContent = roleDescriptions[sel.value] || '';
+}
+</script>
 {% endblock %}

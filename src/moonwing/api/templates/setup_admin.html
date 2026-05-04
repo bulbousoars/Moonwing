@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Create Admin - Moonwing{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="auth-panel setup-first-run-panel">
+    <div class="sidebar-logo auth-logo">
+      <img src="/static/img/moonwing-logo.png" alt="">
+    </div>
+    <h1>Create your admin account</h1>
+    <p>The default admin/admin account is temporary. Create the real administrator account now.</p>
+    {% if error %}
+    <div class="probe-result error">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/setup/admin">
+      <div class="form-group">
+        <label for="identifier">Username or Email</label>
+        <input type="text" id="identifier" name="identifier" required autocomplete="username" placeholder="owner or owner@example.com">
+      </div>
+      <div class="form-group">
+        <label for="display_name">Display Name</label>
+        <input type="text" id="display_name" name="display_name" required placeholder="Owner Admin">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary auth-submit">Create Admin</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Service Token Created - Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Service Token Created</h1>
+  <p>{{ user.display_name }}</p>
+</div>
+
+<div class="detail-card iam-token-panel">
+  <h3>Copy this token now</h3>
+  <p class="finding-detail-copy">
+    Moonwing stores only a hash of this token. After leaving this page, the plain token cannot be shown again.
+  </p>
+  <pre class="service-token-value">{{ token }}</pre>
+  <div class="setup-actions">
+    <a class="btn btn-primary" href="/users/{{ user.id }}">Back to service account</a>
+    <a class="btn" href="/users">Users</a>
+  </div>
+</div>
+{% endblock %}

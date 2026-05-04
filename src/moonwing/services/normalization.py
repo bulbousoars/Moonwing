@@ -7,6 +7,18 @@ class NormalizationError(ValueError):
     pass
 
 
+DETAIL_FIELDS = (
+    "product",
+    "affected_hosts",
+    "affected_ports",
+    "description",
+    "impact",
+    "remediation",
+    "confidence",
+    "references",
+)
+
+
 def normalize_findings(raw_payload: dict) -> list[dict]:
     if not isinstance(raw_payload, dict):
         raise NormalizationError("raw payload must be an object")
@@ -27,8 +39,24 @@ def normalize_findings(raw_payload: dict) -> list[dict]:
                 title=item["title"],
                 severity=item.get("severity", "unknown"),
                 evidence_refs=item.get("evidence", []),
+                details=_extract_details(item),
             )
         except ValidationError as exc:
             raise NormalizationError("raw finding failed validation") from exc
         normalized.append(finding.model_dump(mode="json"))
     return normalized
+
+
+def _extract_details(item: dict) -> dict:
+    details = item.get("details")
+    if isinstance(details, dict):
+        extracted = {key: value for key, value in details.items() if value not in (None, "", [], {})}
+    else:
+        extracted = {}
+
+    for key in DETAIL_FIELDS:
+        value = item.get(key)
+        if value not in (None, "", [], {}):
+            extracted[key] = value
+
+    return extracted

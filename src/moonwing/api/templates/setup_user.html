@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Create User - Moonwing{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="auth-panel setup-first-run-panel">
+    <div class="sidebar-logo auth-logo">
+      <img src="/static/img/moonwing-logo.png" alt="">
+    </div>
+    <h1>Create a regular user</h1>
+    <p>Add a non-admin account for day-to-day viewing. You can skip this and add users later.</p>
+    {% if error %}
+    <div class="probe-result error">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/setup/user">
+      <div class="form-group">
+        <label for="identifier">Username or Email</label>
+        <input type="text" id="identifier" name="identifier" autocomplete="username" placeholder="analyst or analyst@example.com">
+      </div>
+      <div class="form-group">
+        <label for="display_name">Display Name</label>
+        <input type="text" id="display_name" name="display_name" placeholder="Security Analyst">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="new-password">
+      </div>
+      <div class="setup-actions">
+        <button type="submit" class="btn btn-primary">Create Regular User</button>
+        <button type="submit" class="btn" name="skip" value="true">Skip</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

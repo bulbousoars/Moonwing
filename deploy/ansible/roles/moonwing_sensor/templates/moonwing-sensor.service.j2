@@ -1,0 +1,17 @@
+[Unit]
+Description=Moonwing Endpoint Sensor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ moonwing_sensor_install_dir }}
+Environment=PYTHONPATH={{ moonwing_sensor_install_dir }}
+ExecStart=/usr/bin/python3 -m moonwing_sensor.agent run --config {{ moonwing_sensor_config_dir }}/sensor.json --interval {{ moonwing_sensor_interval }}
+Restart=always
+RestartSec=10
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

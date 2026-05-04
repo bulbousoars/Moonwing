@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Runs — Moonwing{% endblock %}
+{% block title %}Runs - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>Runs</h1>
@@ -7,7 +7,7 @@
 </div>
 
 {% if runs %}
-<div class="table-card">
+<div class="table-card runs-table-card">
   <div class="table-card-header">
     <h2>{{ runs|length }} run{{ 's' if runs|length != 1 }}</h2>
     <a href="/runs/new" class="btn btn-primary">+ Launch Scan</a>
@@ -21,17 +21,21 @@
         <th>Provider / Model</th>
         <th>Target</th>
         <th>Created</th>
+        <th class="list-row-affordance-heading" aria-label="Open details"></th>
       </tr>
     </thead>
     <tbody>
       {% for r in runs %}
       <tr>
-        <td><a href="/runs/{{ r.id }}" class="uuid">{{ r.id[:8] }}...</a></td>
+        <td><a href="/runs/{{ r.id }}" class="uuid uuid-full">{{ r.id }}</a></td>
         <td>{{ r.job_family }}</td>
         <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
         <td>{{ r.provider }} / {{ r.model }}</td>
-        <td>{% if r.target_id %}<a href="/targets/{{ r.target_id }}" class="uuid">{{ r.target_id[:8] }}...</a>{% else %}—{% endif %}</td>
-        <td>{{ r.created_at[:19] if r.created_at else '—' }}</td>
+        <td>{% if r.target_id %}<a href="/targets/{{ r.target_id }}" class="uuid">{{ r.target_id[:8] }}...</a>{% else %}-{% endif %}</td>
+        <td>{{ r.created_at[:19] if r.created_at else '-' }}</td>
+        <td class="list-row-affordance">
+          <a class="list-row-open" href="/runs/{{ r.id }}" aria-label="Open run details for {{ r.id }}" title="Open details"></a>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Sensors - Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Endpoint Sensors</h1>
+  <p>Linux, Windows, and future macOS sensors enrolled with Moonwing</p>
+</div>
+
+{% if sensors %}
+<div class="table-card sensors-table-card">
+  <div class="table-card-header">
+    <h2>{{ sensors|length }} sensor{{ 's' if sensors|length != 1 }}</h2>
+    <span class="text-muted">Policy is assigned by platform and labels</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Endpoint</th>
+        <th>Platform</th>
+        <th>Status</th>
+        <th>Labels</th>
+        <th>Version</th>
+        <th>Queued Tasks</th>
+        <th>Events</th>
+        <th>Last Seen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sensor in sensors %}
+      <tr>
+        <td>
+          <strong>{{ sensor.hostname }}</strong>
+          <div class="uuid">{{ sensor.id[:8] }}...</div>
+        </td>
+        <td>
+          <span class="badge badge-info">{{ sensor.platform }}</span>
+          <div class="text-muted">{{ sensor.os_name or '-' }}</div>
+        </td>
+        <td><span class="badge badge-{{ 'completed' if sensor.status == 'active' else 'info' }}">{{ sensor.status }}</span></td>
+        <td>
+          {% if sensor.labels %}
+            {% for label in sensor.labels %}<span class="tag">{{ label }}</span>{% endfor %}
+          {% else %}
+            <span class="text-muted">None</span>
+          {% endif %}
+        </td>
+        <td>{{ sensor.sensor_version or '-' }}</td>
+        <td>{{ sensor.queued_tasks }}</td>
+        <td>{{ sensor.event_count }}</td>
+        <td>{{ sensor.last_seen_at[:19] if sensor.last_seen_at else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h3>No endpoint sensors enrolled</h3>
+  <p>Install a Moonwing sensor and enroll it against <code>/api/sensors/enroll</code>.</p>
+</div>
+{% endif %}
+{% endblock %}

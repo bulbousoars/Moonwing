@@ -1,13 +1,14 @@
-from enum import Enum
+from __future__ import annotations
+
+from enum import StrEnum
 
 
-class JobFamily(str, Enum):
-    NETWORK_SCAN = 'network_scan'
-    SOURCE_HUNT = 'source_hunt'
+class JobFamily(StrEnum):
+    NETWORK_SCAN = "network_scan"
+    SOURCE_HUNT = "source_hunt"
 
 
-class SourceInputKind(str, Enum):
-    REPO = 'repo'
-    LOCAL_SOURCE_TREE = 'local_source_tree'
-    BINARY = 'binary'
-    SBOM = 'sbom'
+class SourceInputKind(StrEnum):
+    REPO = "repo"
+    URL = "url"
+    PATH = "path"

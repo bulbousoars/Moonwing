@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Users — Moonwing{% endblock %}
+{% block title %}Users - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>Users</h1>
-  <p>Platform users</p>
+  <p>Admins, operators, viewers, and service accounts</p>
 </div>
 
 {% if users %}
@@ -17,17 +17,23 @@
       <tr>
         <th>ID</th>
         <th>Display Name</th>
-        <th>Email</th>
+        <th>Identifier</th>
+        <th>Role</th>
+        <th>Source</th>
+        <th>Status</th>
         <th>Created</th>
       </tr>
     </thead>
     <tbody>
       {% for u in users %}
       <tr>
-        <td><a href="/users/{{ u.id }}" class="uuid">{{ u.id[:8] }}...</a></td>
+        <td><a href="/users/{{ u.id }}" class="uuid uuid-full">{{ u.id }}</a></td>
         <td>{{ u.display_name }}</td>
         <td>{{ u.email }}</td>
-        <td>{{ u.created_at[:19] if u.created_at else '—' }}</td>
+        <td><span class="badge badge-info">{{ u.role }}</span></td>
+        <td><span class="badge badge-low">{{ u.source_label }}</span><br><small class="muted">{{ u.role_source_label }}</small></td>
+        <td>{{ u.status }}</td>
+        <td>{{ u.created_at[:19] if u.created_at else '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>

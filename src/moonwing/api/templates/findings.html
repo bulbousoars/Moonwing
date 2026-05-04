@@ -1,49 +1,173 @@
 {% extends "base.html" %}
-{% block title %}Findings — Moonwing{% endblock %}
+{% block title %}Findings - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>Findings</h1>
   <p>All security findings across runs</p>
 </div>
 
-{% if severity_counts %}
-<div class="stats-grid">
-  <div class="stat-card"><div class="label">Critical</div><div class="value critical">{{ severity_counts.critical or 0 }}</div></div>
-  <div class="stat-card"><div class="label">High</div><div class="value high">{{ severity_counts.high or 0 }}</div></div>
-  <div class="stat-card"><div class="label">Medium</div><div class="value medium">{{ severity_counts.medium or 0 }}</div></div>
-  <div class="stat-card"><div class="label">Low</div><div class="value low">{{ severity_counts.low or 0 }}</div></div>
-  <div class="stat-card"><div class="label">Info</div><div class="value">{{ severity_counts.info or 0 }}</div></div>
-</div>
-{% endif %}
-
 {% if findings %}
-<div class="table-card">
-  <div class="table-card-header">
-    <h2>{{ findings|length }} finding{{ 's' if findings|length != 1 }}</h2>
+<section class="findings-console" aria-label="Finding filters and table">
+  <div class="findings-control-grid">
+    <div class="findings-search">
+      <label for="filter-search">Search findings</label>
+      <input id="filter-search" type="search" placeholder="Search title, run ID, product">
+    </div>
+
+    <div class="filter-section severity-filter-section">
+      <label class="filter-section-label" for="filter-severity">Severity</label>
+      <select id="filter-severity" class="filter-select">
+        <option value="">All severities ({{ findings|length }})</option>
+        <option value="critical">Critical ({{ severity_counts.critical or 0 }})</option>
+        <option value="high">High ({{ severity_counts.high or 0 }})</option>
+        <option value="medium">Medium ({{ severity_counts.medium or 0 }})</option>
+        <option value="low">Low ({{ severity_counts.low or 0 }})</option>
+        <option value="info">Info ({{ severity_counts.info or 0 }})</option>
+        <option value="unknown">Unknown ({{ severity_counts.unknown or 0 }})</option>
+      </select>
+    </div>
+
+    <div class="filter-section product-filter-section">
+      <label class="filter-section-label" for="filter-product">Product affected</label>
+      <select id="filter-product" class="filter-select product-filter-select">
+        <option value="">All products</option>
+        {% for product in product_options %}
+        <option value="{{ product }}">{{ product }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-actions">
+      <div class="findings-count" id="filter-count">{{ findings|length }} of {{ findings|length }} shown</div>
+      <button type="button" class="btn" id="clear-filters">Reset filters</button>
+    </div>
   </div>
-  <table>
+</section>
+
+<div class="table-card table-card-command findings-table-card">
+  <div class="table-card-header">
+    <div>
+      <h2><span id="findings-count">{{ findings|length }}</span> finding{{ 's' if findings|length != 1 }}</h2>
+      <p>Click a column heading to sort. Filters stay applied.</p>
+    </div>
+  </div>
+  <table id="findings-table" class="interactive-table">
     <thead>
       <tr>
-        <th>Title</th>
-        <th>Severity</th>
-        <th>Run</th>
-        <th>Evidence</th>
-        <th>Created</th>
+        <th><button type="button" class="sort-control" data-col="0" data-type="text">Title <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="1" data-type="severity">Severity <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="2" data-type="text">Product Affected <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="3" data-type="text">Host Affected <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="4" data-type="text">Scan Type <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="5" data-type="text">Run <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="6" data-type="number">Evidence <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="7" data-type="date">Created <span class="sort-mark"></span></button></th>
+        <th class="finding-row-affordance-heading" aria-label="Open details"></th>
       </tr>
     </thead>
     <tbody>
       {% for f in findings %}
-      <tr>
+      <tr data-severity="{{ f.severity }}" data-product="{{ f.product_affected }}">
         <td><a href="/findings/{{ f.id }}">{{ f.title }}</a></td>
-        <td><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
-        <td><a href="/runs/{{ f.run_id }}" class="uuid">{{ f.run_id[:8] }}...</a></td>
-        <td>{{ f.evidence_refs|length }}</td>
-        <td>{{ f.created_at[:19] if f.created_at else '—' }}</td>
+        <td data-sort="{{ f.severity }}"><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
+        <td>{{ f.product_affected }}</td>
+        <td class="host-list">{{ f.host_affected }}</td>
+        <td><span class="badge badge-info">{{ f.scan_type }}</span></td>
+        <td><a href="/runs/{{ f.run_id }}" class="uuid uuid-full">{{ f.run_id }}</a></td>
+        <td data-sort="{{ f.evidence_refs|length }}">{{ f.evidence_refs|length }}</td>
+        <td data-sort="{{ f.created_at or '' }}">{{ f.created_at[:19] if f.created_at else '-' }}</td>
+        <td class="finding-row-affordance">
+          <a class="finding-row-open" href="/findings/{{ f.id }}" aria-label="Open finding details for {{ f.title }}" title="Open details"></a>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+<script>
+(function () {
+  var table = document.getElementById('findings-table');
+  var searchFilter = document.getElementById('filter-search');
+  var severityFilter = document.getElementById('filter-severity');
+  var productFilter = document.getElementById('filter-product');
+  var clearButton = document.getElementById('clear-filters');
+  var countText = document.getElementById('filter-count');
+  var countNumber = document.getElementById('findings-count');
+  var sortState = { col: -1, asc: true };
+  var severityRank = { critical: 0, high: 1, medium: 2, low: 3, info: 4, unknown: 5 };
+
+  function rows() {
+    return Array.prototype.slice.call(table.querySelectorAll('tbody tr'));
+  }
+
+  function cellValue(row, col, type) {
+    var cell = row.children[col];
+    var raw = cell.getAttribute('data-sort') || cell.textContent.trim();
+    if (type === 'severity') return severityRank[raw] === undefined ? 99 : severityRank[raw];
+    if (type === 'number') return parseInt(raw, 10) || 0;
+    if (type === 'date') return raw;
+    return raw.toLowerCase();
+  }
+
+  function updateFilters() {
+    var query = searchFilter.value.trim().toLowerCase();
+    var severity = severityFilter.value;
+    var product = productFilter.value;
+    var visible = 0;
+    rows().forEach(function (row) {
+      var matchesSeverity = !severity || row.getAttribute('data-severity') === severity;
+      var matchesProduct = !product || row.getAttribute('data-product') === product;
+      var matchesSearch = !query || row.textContent.toLowerCase().indexOf(query) !== -1;
+      var show = matchesSeverity && matchesProduct && matchesSearch;
+      row.hidden = !show;
+      if (show) visible += 1;
+    });
+    countNumber.textContent = visible;
+    countText.textContent = visible + ' of ' + rows().length + ' shown';
+  }
+
+  function sortBy(col, type, control) {
+    var asc = sortState.col === col ? !sortState.asc : true;
+    sortState = { col: col, asc: asc };
+    table.querySelectorAll('.sort-control').forEach(function (button) {
+      button.removeAttribute('aria-sort');
+      var mark = button.querySelector('.sort-mark');
+      if (mark) mark.textContent = '';
+    });
+    control.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
+    control.querySelector('.sort-mark').textContent = asc ? 'asc' : 'desc';
+
+    var tbody = table.querySelector('tbody');
+    rows().sort(function (a, b) {
+      var aVal = cellValue(a, col, type);
+      var bVal = cellValue(b, col, type);
+      if (aVal < bVal) return asc ? -1 : 1;
+      if (aVal > bVal) return asc ? 1 : -1;
+      return 0;
+    }).forEach(function (row) {
+      tbody.appendChild(row);
+    });
+    updateFilters();
+  }
+
+  searchFilter.addEventListener('input', updateFilters);
+  severityFilter.addEventListener('change', updateFilters);
+  productFilter.addEventListener('change', updateFilters);
+  clearButton.addEventListener('click', function () {
+    searchFilter.value = '';
+    severityFilter.value = '';
+    productFilter.value = '';
+    updateFilters();
+  });
+  table.querySelectorAll('.sort-control').forEach(function (control) {
+    control.addEventListener('click', function () {
+      sortBy(parseInt(control.getAttribute('data-col'), 10), control.getAttribute('data-type'), control);
+    });
+  });
+  updateFilters();
+})();
+</script>
 {% else %}
 <div class="empty-state">
   <h3>No findings yet</h3>

@@ -1,7 +1,8 @@
 """Direct API executor — calls provider APIs via httpx instead of CLI tools.
 
-Supports OpenAI, Anthropic, and OpenRouter APIs.  The executor sends
-a structured security-scanning prompt and parses the JSON response.
+Supports OpenAI, Anthropic, Google Gemini, and OpenRouter APIs.  The
+executor sends a structured security-scanning prompt and parses the
+JSON response.
 """
 
 from __future__ import annotations
@@ -151,6 +152,60 @@ def _call_anthropic(
     }
 
 
+def _call_google(
+    *,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout: int,
+) -> dict:
+    """Call the Google Gemini generateContent API."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key,
+    }
+
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "systemInstruction": {
+            "parts": [{"text": "You are a security scanner. Respond only with valid JSON."}],
+        },
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json",
+        },
+    }
+
+    with httpx.Client(timeout=timeout) as client:
+        resp = client.post(url, json=body, headers=headers)
+
+    if resp.status_code != 200:
+        raise APIExecutionError(
+            f"Google API returned {resp.status_code}: {resp.text[:500]}",
+            status_code=resp.status_code,
+        )
+
+    data = resp.json()
+    # Extract text from candidates[0].content.parts
+    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+    content = "".join(p.get("text", "") for p in parts)
+
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise APIExecutionError(
+            f"Google response is not valid JSON: {exc}. First 200 chars: {content[:200]!r}"
+        ) from exc
+
+    usage = data.get("usageMetadata")
+
+    return {
+        "payload": payload,
+        "usage": usage,
+    }
+
+
 def execute_via_api(
     *,
     provider: str,
@@ -188,6 +243,13 @@ def execute_via_api(
             prompt=prompt,
             timeout=timeout,
             extra_headers=extra_headers or None,
+        )
+    elif provider == "google":
+        result = _call_google(
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            timeout=timeout,
         )
     elif provider == "ollama":
         # Ollama uses OpenAI-compatible API locally

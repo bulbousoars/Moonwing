@@ -1,29 +1,34 @@
 {% extends "base.html" %}
-{% block title %}New Runtime Profile — Moonwing{% endblock %}
+{% block title %}{{ 'Edit Runtime Profile' if profile else 'New Runtime Profile' }} - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>New Runtime Profile</h1>
-  <p>Define execution policies for scans</p>
+  <h1>{{ 'Edit Runtime Profile' if profile else 'New Runtime Profile' }}</h1>
+  <p>{{ 'Update execution policy for scans' if profile else 'Define execution policies for scans' }}</p>
 </div>
 
+{% if error %}
+<div class="probe-result error">{{ error }}</div>
+{% endif %}
+
 <div class="detail-card" style="max-width:600px">
-  <form method="post" action="/runtime-profiles/new">
+  <form method="post" action="{{ action }}">
     <div class="form-group">
       <label for="name">Profile Name</label>
-      <input type="text" id="name" name="name" required placeholder="e.g. default-network">
+      <input type="text" id="name" name="name" required value="{{ profile.name if profile else '' }}" placeholder="e.g. default-network">
     </div>
     <div class="form-group">
       <label for="allow_exploits">Allow Exploits</label>
+      {% set allow = profile.allow_exploits if profile else false %}
       <select id="allow_exploits" name="allow_exploits">
-        <option value="false">No</option>
-        <option value="true">Yes</option>
+        <option value="false" {% if not allow %}selected{% endif %}>No</option>
+        <option value="true" {% if allow %}selected{% endif %}>Yes</option>
       </select>
     </div>
     <div class="form-group">
       <label for="settings">Settings (JSON)</label>
-      <textarea id="settings" name="settings" rows="4" placeholder='{}'>{}</textarea>
+      <textarea id="settings" name="settings" rows="4" placeholder='{}'>{{ profile.settings | tojson(indent=2) if profile else '{}' }}</textarea>
     </div>
-    <button type="submit" class="btn btn-primary">Create Profile</button>
+    <button type="submit" class="btn btn-primary">{{ 'Save Profile' if profile else 'Create Profile' }}</button>
   </form>
 </div>
 {% endblock %}

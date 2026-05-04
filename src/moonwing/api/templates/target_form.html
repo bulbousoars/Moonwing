@@ -1,31 +1,38 @@
 {% extends "base.html" %}
-{% block title %}New Target — Moonwing{% endblock %}
+{% block title %}{{ 'Edit Target' if target else 'New Target' }} - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>New Target</h1>
-  <p>Add a scan target</p>
+  <h1>{{ 'Edit Target' if target else 'New Target' }}</h1>
+  <p>{{ 'Update scan target settings' if target else 'Add a scan target' }}</p>
 </div>
 
+{% if error %}
+<div class="probe-result error">{{ error }}</div>
+{% endif %}
+
 <div class="detail-card" style="max-width:600px">
-  <form method="post" action="/targets/new">
+  <form method="post" action="{{ action }}">
     <div class="form-group">
       <label for="display_name">Display Name</label>
-      <input type="text" id="display_name" name="display_name" required placeholder="e.g. 192.168.1.100 or github.com/org/repo">
+      <input type="text" id="display_name" name="display_name" required value="{{ target.display_name if target else '' }}" placeholder="e.g. 192.168.1.100, https://example.com, or github.com/org/repo">
     </div>
     <div class="form-group">
       <label for="target_type">Target Type</label>
       <select id="target_type" name="target_type">
-        <option value="network_host">Network Host</option>
-        <option value="repo">Repository</option>
-        <option value="binary">Binary</option>
-        <option value="sbom">SBOM</option>
+        {% set selected_type = target.target_type if target else 'network_host' %}
+        <option value="network_host" {% if selected_type == 'network_host' %}selected{% endif %}>Network Host</option>
+        <option value="website" {% if selected_type == 'website' %}selected{% endif %}>Website / URL</option>
+        <option value="repo" {% if selected_type == 'repo' %}selected{% endif %}>Repository</option>
+        <option value="binary" {% if selected_type == 'binary' %}selected{% endif %}>Binary</option>
+        <option value="sbom" {% if selected_type == 'sbom' %}selected{% endif %}>SBOM</option>
       </select>
+      <p class="form-help">Websites and network hosts usually use Network Scan. Repositories, binaries, and SBOMs usually use Source Hunt.</p>
     </div>
     <div class="form-group">
       <label for="source_metadata">Source Metadata (JSON)</label>
-      <textarea id="source_metadata" name="source_metadata" rows="4" placeholder='{"address": "192.168.1.100", "port_range": "1-1024"}'>{}</textarea>
+      <textarea id="source_metadata" name="source_metadata" rows="4" placeholder='{"url": "https://example.com"}'>{{ target.source_metadata | tojson(indent=2) if target else '{}' }}</textarea>
     </div>
-    <button type="submit" class="btn btn-primary">Create Target</button>
+    <button type="submit" class="btn btn-primary">{{ 'Save Target' if target else 'Create Target' }}</button>
   </form>
 </div>
 {% endblock %}

@@ -1,0 +1,57 @@
+---
+- name: Ensure Moonwing sensor directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ moonwing_sensor_install_dir }}"
+    - "{{ moonwing_sensor_config_dir }}"
+
+- name: Copy Moonwing sensor Python package
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../src/moonwing_sensor/"
+    dest: "{{ moonwing_sensor_install_dir }}/moonwing_sensor/"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart moonwing sensor
+
+- name: Install Moonwing sensor systemd unit
+  ansible.builtin.template:
+    src: moonwing-sensor.service.j2
+    dest: /etc/systemd/system/moonwing-sensor.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart moonwing sensor
+
+- name: Check whether Moonwing sensor is enrolled
+  ansible.builtin.stat:
+    path: "{{ moonwing_sensor_config_dir }}/sensor.json"
+  register: moonwing_sensor_config
+
+- name: Enroll Moonwing sensor
+  ansible.builtin.command:
+    cmd: >-
+      python3 -m moonwing_sensor.agent enroll
+      --server {{ moonwing_sensor_server_url }}
+      --token {{ moonwing_sensor_enrollment_token }}
+      --config {{ moonwing_sensor_config_dir }}/sensor.json
+    chdir: "{{ moonwing_sensor_install_dir }}"
+  environment:
+    PYTHONPATH: "{{ moonwing_sensor_install_dir }}"
+  when:
+    - not moonwing_sensor_config.stat.exists
+    - moonwing_sensor_enrollment_token | length > 0
+  changed_when: true
+  no_log: true
+
+- name: Enable and start Moonwing sensor
+  ansible.builtin.systemd_service:
+    name: moonwing-sensor
+    enabled: true
+    state: started
+    daemon_reload: true

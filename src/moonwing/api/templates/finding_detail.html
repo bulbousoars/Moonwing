@@ -1,27 +1,186 @@
 {% extends "base.html" %}
-{% block title %}Finding — Moonwing{% endblock %}
+{% block title %}Finding - Moonwing
+<div class="detail-grid finding-evidence-grid">
+  <div class="detail-card finding-evidence-card">
+    <h3>Detection Logic</h3>
+    <ul class="finding-reference-list">
+      {% for item in finding.insights.detection_logic %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="detail-card finding-evidence-card">
+    <h3>Raw Payload</h3>
+    <details>
+      <summary>Stored details JSON</summary>
+      <pre class="evidence-raw uuid">{{ finding.insights.raw_details }}</pre>
+    </details>
+  </div>
+</div>
+{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>{{ finding.title }}</h1>
-  <p><span class="badge badge-{{ finding.severity }}">{{ finding.severity }}</span></p>
+  <p>
+    <span class="badge badge-{{ finding.severity }}">{{ finding.severity }}</span>
+    <span class="finding-status-badge status-{{ finding.status }}">{{ finding.status_label }}</span>
+    <span class="muted-inline">{{ finding.product_affected }} / {{ finding.host_affected }}</span>
+  </p>
 </div>
 
 <div class="detail-grid">
   <div class="detail-card">
-    <h3>Details</h3>
-    <div class="detail-row"><span class="label">ID</span><span class="value uuid">{{ finding.id }}</span></div>
-    <div class="detail-row"><span class="label">Severity</span><span class="value"><span class="badge badge-{{ finding.severity }}">{{ finding.severity }}</span></span></div>
-    <div class="detail-row"><span class="label">Run</span><span class="value"><a href="/runs/{{ finding.run_id }}" class="uuid">{{ finding.run_id[:8] }}...</a></span></div>
-    <div class="detail-row"><span class="label">Created</span><span class="value">{{ finding.created_at[:19] if finding.created_at else '—' }}</span></div>
+    <h3>Finding Context</h3>
+    <div class="detail-row"><span class="label">Product Affected</span><span class="value">{{ finding.product_affected }}</span></div>
+    <div class="detail-row"><span class="label">Host Affected</span><span class="value">{{ finding.host_affected }}</span></div>
+    <div class="detail-row"><span class="label">Affected Ports</span><span class="value">{{ finding.affected_ports }}</span></div>
+    <div class="detail-row"><span class="label">Scan Type</span><span class="value">{{ finding.scan_type }}</span></div>
+    {% if finding.confidence %}
+    <div class="detail-row"><span class="label">Confidence</span><span class="value">{{ finding.confidence }}</span></div>
+    {% endif %}
   </div>
   <div class="detail-card">
+    <h3>Record</h3>
+    <div class="detail-row"><span class="label">ID</span><span class="value uuid">{{ finding.id }}</span></div>
+    <div class="detail-row"><span class="label">Severity</span><span class="value"><span class="badge badge-{{ finding.severity }}">{{ finding.severity }}</span></span></div>
+    <div class="detail-row finding-status-row">
+      <span class="label">Status</span>
+      <span class="value">
+        <form method="post" action="/findings/{{ finding.id }}/status" class="finding-status-form">
+          <select name="status" aria-label="Finding status">
+            <option value="open" {{ 'selected' if finding.status == 'open' else '' }}>Open</option>
+            <option value="remediated" {{ 'selected' if finding.status == 'remediated' else '' }}>Remediated</option>
+            <option value="accepted_risk" {{ 'selected' if finding.status == 'accepted_risk' else '' }}>Accepted Risk</option>
+            <option value="false_positive" {{ 'selected' if finding.status == 'false_positive' else '' }}>False Positive</option>
+          </select>
+          <button type="submit" class="btn btn-sm">Update</button>
+        </form>
+      </span>
+    </div>
+    {% if finding.remediated_at %}
+    <div class="detail-row"><span class="label">Remediated</span><span class="value">{{ finding.remediated_at[:19] }}</span></div>
+    {% endif %}
+    <div class="detail-row"><span class="label">Run</span><span class="value"><a href="/runs/{{ finding.run_id }}" class="uuid uuid-full">{{ finding.run_id }}</a></span></div>
+    {% if finding.target_name %}
+    <div class="detail-row"><span class="label">Target</span><span class="value">{{ finding.target_name }}</span></div>
+    {% endif %}
+    <div class="detail-row"><span class="label">Created</span><span class="value">{{ finding.created_at[:19] if finding.created_at else '-' }}</span></div>
+  </div>
+</div>
+
+<div class="detail-grid finding-narrative-grid">
+  <div class="detail-card finding-narrative-card">
+    <h3>Executive Summary</h3>
+    <p class="finding-detail-copy">{{ finding.insights.executive_summary }}</p>
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>Technical Explanation</h3>
+    <p class="finding-detail-copy">{{ finding.insights.technical_explanation }}</p>
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>Risk Reasoning</h3>
+    <p class="finding-detail-copy">{{ finding.insights.risk_reasoning }}</p>
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>Exploitability</h3>
+    <p class="finding-detail-copy">{{ finding.insights.exploitability }}</p>
+  </div>
+</div>
+
+<div class="detail-grid finding-narrative-grid">
+  <div class="detail-card finding-narrative-card">
+    <h3>Description</h3>
+    {% if finding.description %}
+    <p class="finding-detail-copy">{{ finding.description }}</p>
+    {% else %}
+    <p class="finding-detail-copy muted">No narrative description was stored for this finding. Future runs will request one from the analyzer.</p>
+    {% endif %}
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>Impact</h3>
+    {% if finding.impact %}
+    <p class="finding-detail-copy">{{ finding.impact }}</p>
+    {% else %}
+    <p class="finding-detail-copy muted">Impact detail was not present in the original finding payload.</p>
+    {% endif %}
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>Remediation</h3>
+    {% if finding.remediation %}
+    <p class="finding-detail-copy">{{ finding.remediation }}</p>
+    {% else %}
+    <p class="finding-detail-copy muted">Remediation guidance was not present in the original finding payload.</p>
+    {% endif %}
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>References</h3>
+    {% if finding.references %}
+    <ul class="finding-reference-list">
+      {% for ref in finding.references %}
+      <li><a href="{{ ref }}" target="_blank" rel="noreferrer">{{ ref }}</a></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="finding-detail-copy muted">No external references were stored for this finding.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="detail-grid finding-narrative-grid">
+  <div class="detail-card">
+    <h3>Affected Asset</h3>
+    {% for label, value in finding.insights.affected_asset.items() %}
+      {% if value %}
+      <div class="detail-row"><span class="label">{{ label }}</span><span class="value">{{ value }}</span></div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>Validation Steps</h3>
+    <ul class="finding-reference-list">
+      {% for step in finding.insights.validation_steps %}
+      <li>{{ step }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>Product Documentation</h3>
+    <ul class="finding-reference-list">
+      {% for link in finding.insights.documentation_links %}
+      <li><a href="{{ link }}" target="_blank" rel="noreferrer">{{ link }}</a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="detail-card finding-narrative-card">
+    <h3>Vulnerability References</h3>
+    {% if finding.insights.vulnerability_references %}
+    <ul class="finding-reference-list">
+      {% for link in finding.insights.vulnerability_references %}
+      <li><a href="{{ link }}" target="_blank" rel="noreferrer">{{ link }}</a></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="finding-detail-copy muted">No CVE or advisory identifiers were detected in the stored finding data.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="detail-grid finding-evidence-grid">
+  <div class="detail-card finding-evidence-card">
     <h3>Evidence References</h3>
-    {% if finding.evidence_refs %}
-    {% for ref in finding.evidence_refs %}
-    <div class="detail-row"><span class="value uuid">{{ ref }}</span></div>
+    {% if finding.evidence_items %}
+    {% for item in finding.evidence_items %}
+    <div class="evidence-item">
+      <div class="evidence-summary">
+        {% if item.host %}<span>{{ item.host }}</span>{% endif %}
+        {% if item.port %}<span>{{ item.port }}</span>{% endif %}
+        {% if item.service %}<span>{{ item.service }}</span>{% endif %}
+      </div>
+      <div class="evidence-raw uuid">{{ item.raw }}</div>
+    </div>
     {% endfor %}
     {% else %}
-    <p style="color:var(--text-muted);font-size:0.875rem">No evidence references</p>
+    <p class="finding-detail-copy muted">No evidence references</p>
     {% endif %}
   </div>
 </div>

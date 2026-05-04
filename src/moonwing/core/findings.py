@@ -18,3 +18,4 @@ class NormalizedFinding(BaseModel):
     title: str
     severity: FindingSeverity = FindingSeverity.UNKNOWN
     evidence_refs: list[str] = Field(default_factory=list)
+    details: dict = Field(default_factory=dict)

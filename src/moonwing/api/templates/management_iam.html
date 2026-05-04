@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Management - Moonwing{% endblock %}
+{% block content %}
+<div class="page-header management-header">
+  <div>
+    <h1>Management</h1>
+    <p>Identity, access, service accounts, and administrative integrations.</p>
+  </div>
+  <div class="management-header-actions">
+    <a href="/users" class="btn">Users</a>
+    <a href="/users/new" class="btn btn-primary">+ New User</a>
+  </div>
+</div>
+
+<section class="management-overview">
+  <div class="management-overview-primary">
+    <span>Access estate</span>
+    <strong>{{ summary.active_users }}</strong>
+    <small>{{ summary.total_users }} total identities</small>
+  </div>
+  <div class="management-overview-metrics">
+    <div><span>Admins</span><strong>{{ summary.admins }}</strong></div>
+    <div><span>Service Accounts</span><strong>{{ summary.service_accounts }}</strong></div>
+    <div><span>Active Tokens</span><strong>{{ summary.active_tokens }}</strong></div>
+    <div><span>Audit Events</span><strong>{{ summary.audit_events }}</strong></div>
+  </div>
+</section>
+
+<div class="management-layout">
+  <section class="management-workspace">
+    <div class="management-section-header">
+      <div>
+        <h2>Users & Roles</h2>
+        <p>Local admins, operators, viewers, and service identities.</p>
+      </div>
+      <a href="/users/new" class="btn">Add Identity</a>
+    </div>
+
+    {% if users %}
+    <div class="management-user-list">
+      {% for u in users %}
+      <a class="management-user-row" href="/users/{{ u.id }}">
+        <div class="management-user-name">
+          <strong>{{ u.display_name }}</strong>
+          <span>{{ u.email }}</span>
+        </div>
+        <div class="management-user-role">
+          <span class="badge badge-info">{{ u.role }}</span>
+          {% if u.is_service_account %}<span class="badge badge-low">service</span>{% endif %}
+        </div>
+        <div class="management-user-status">
+          <span class="status-pill {% if u.status == 'active' %}active{% else %}muted{% endif %}">{{ u.status }}</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state compact-empty">
+      <h3>No users yet</h3>
+      <p><a href="/users/new">Create your first user</a></p>
+    </div>
+    {% endif %}
+  </section>
+
+  <aside class="management-config">
+    <div class="management-section-header compact">
+      <div>
+        <h2>Configuration</h2>
+        <p>External identity and admin workflow setup.</p>
+      </div>
+    </div>
+
+    <section class="management-config-item">
+      <div>
+        <h3>Directory Sync</h3>
+        <p>LDAP and external directory integration.</p>
+      </div>
+      <a class="config-state ready" href="/management/directory">Set up</a>
+    </section>
+    <section class="management-config-item">
+      <div>
+        <h3>Email Notifications</h3>
+        <p>SMTP setup and alert routing.</p>
+      </div>
+      <a class="config-state ready" href="/management/notifications">Set up</a>
+    </section>
+    <section class="management-config-item">
+      <div>
+        <h3>Privileged Access</h3>
+        <p>Approvals, time-bound grants, and review workflows.</p>
+      </div>
+      <a class="config-state ready" href="/management/privileged-access">Open</a>
+    </section>
+  </aside>
+</div>
+
+<section class="management-audit-section">
+  <div class="management-section-header">
+    <div>
+      <h2>Recent IAM/PAM Audit Events</h2>
+      <p>Administrative activity recorded by Moonwing.</p>
+    </div>
+  </div>
+  {% if recent_audit_events %}
+  <div class="audit-event-list">
+    {% for event in recent_audit_events %}
+    <div class="audit-event-row">
+      <div>
+        <strong>{{ event.action }}</strong>
+        <span>{{ event.resource_type }}{% if event.resource_id %}: {{ event.resource_id }}{% endif %}</span>
+      </div>
+      <span class="status-pill {% if event.outcome == 'success' %}active{% else %}muted{% endif %}">{{ event.outcome }}</span>
+      <time class="ts" data-ts="{{ event.created_at }}">{{ event.created_at[:19] if event.created_at else '-' }}</time>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state compact-empty">
+    <h3>No audit events yet</h3>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

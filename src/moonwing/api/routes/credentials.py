@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from moonwing.api.deps import get_db
 from moonwing.db.models import Credential
+from moonwing.services.ai_provider_probe import ProviderProbeError, probe_provider
 from moonwing.services.crypto import CryptoError, decrypt_api_key, encrypt_api_key, mask_api_key
 
 router = APIRouter()
@@ -20,6 +21,12 @@ class CredentialCreate(BaseModel):
     display_name: str
     api_key: str | None = None
     secret_ref: str | None = None  # legacy, ignored when api_key is set
+
+
+class CredentialTest(BaseModel):
+    provider: str
+    model: str | None = None
+    api_key: str | None = None
 
 
 @router.get('')
@@ -81,3 +88,20 @@ def create_credential(payload: CredentialCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(cred)
     return {'id': str(cred.id), 'display_name': cred.display_name, 'has_api_key': encrypted is not None}
+
+
+@router.post('/test')
+def test_credential(payload: CredentialTest):
+    try:
+        return probe_provider(
+            provider=payload.provider,
+            api_key=payload.api_key or "",
+            model=payload.model,
+        )
+    except ProviderProbeError as exc:
+        return {
+            "ok": False,
+            "provider": payload.provider,
+            "model": payload.model or "",
+            "message": str(exc),
+        }

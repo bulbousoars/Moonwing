@@ -1,0 +1,6 @@
+---
+- name: Restart moonwing sensor
+  ansible.builtin.systemd_service:
+    name: moonwing-sensor
+    state: restarted
+    daemon_reload: true

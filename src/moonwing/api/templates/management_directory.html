@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Directory Sync - Moonwing{% endblock %}
+{% block content %}
+<div class="ops-page-shell">
+<div class="page-header dashboard-header">
+  <div>
+    <h1>Directory Sync</h1>
+    <p>Generic LDAP, Active Directory, and Authentik LDAP sync configuration</p>
+  </div>
+  <a href="/management/iam" class="btn">Management</a>
+</div>
+
+{% if flash_message %}
+<div class="flash-msg flash-{{ flash_type or 'info' }}">{{ flash_message }}</div>
+{% endif %}
+
+<section class="ops-status-strip">
+  <div>
+    <span>Connection</span>
+    <strong>{{ 'Enabled' if ldap and ldap.enabled else ('Configured' if ldap and ldap.host else 'Not configured') }}</strong>
+  </div>
+  <div>
+    <span>Provider</span>
+    <strong>{{ ldap.provider_type if ldap and ldap.provider_type else 'Select one' }}</strong>
+  </div>
+  <div>
+    <span>Transport</span>
+    <strong>{% if ldap and ldap.start_tls %}STARTTLS{% elif not ldap or ldap.use_ssl %}LDAPS{% else %}Plain LDAP{% endif %}</strong>
+  </div>
+  <div>
+    <span>Default Role</span>
+    <strong>{{ ldap.default_role if ldap and ldap.default_role else 'viewer' }}</strong>
+  </div>
+</section>
+
+<div class="dashboard-grid directory-help-grid ops-support-grid">
+  <div class="ops-panel">
+    <div class="table-card-header">
+      <div>
+        <h2>Setup Checklist</h2>
+        <p>Ask your directory admin for these values before saving a connection</p>
+      </div>
+    </div>
+    <div class="directory-checklist">
+      <span>LDAP host and port</span>
+      <span>Bind DN and password</span>
+      <span>Base DN for user search</span>
+      <span>User filter</span>
+      <span>Group DNs for Moonwing roles</span>
+    </div>
+  </div>
+  <div class="ops-panel">
+    <div class="table-card-header">
+      <div>
+        <h2>Provider Presets</h2>
+        <p>Selecting a provider fills in common defaults; it does not connect anything automatically</p>
+      </div>
+    </div>
+    <div class="provider-preset-list">
+      {% for key, preset in provider_presets.items() %}
+      <div class="provider-preset" data-provider="{{ key }}">
+        <strong>{{ preset.label }}</strong>
+        <span>{{ preset.notes }}</span>
+        <code>{{ preset.user_filter }}</code>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="dashboard-grid">
+  <div class="ops-panel ops-panel-primary table-card-command">
+    <div class="table-card-header">
+      <div>
+        <h2>LDAP Connection</h2>
+        <p>Save connection settings without enabling automatic identity changes</p>
+      </div>
+      {% if ldap and ldap.host %}
+      <span class="badge badge-{{ 'completed' if ldap.enabled else 'info' }}">{{ 'Enabled' if ldap.enabled else 'Configured' }}</span>
+      {% else %}
+      <span class="badge badge-info">Not configured</span>
+      {% endif %}
+    </div>
+    <form method="post" action="/management/directory/config" class="notif-form">
+      <div class="notif-form-grid ldap-form-grid">
+        <div class="notif-field">
+          <label for="provider-type">Provider</label>
+          <select id="provider-type" name="provider_type" data-presets='{{ provider_presets | tojson }}'>
+            {% for provider in provider_types %}
+            <option value="{{ provider.value }}" {{ 'selected' if ldap and ldap.provider_type == provider.value else '' }}>{{ provider.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="notif-field">
+          <label for="ldap-host">Host</label>
+          <input id="ldap-host" name="host" value="{{ ldap.host if ldap else '' }}" placeholder="ldap.example.com" required>
+        </div>
+        <div class="notif-field notif-field-sm">
+          <label for="ldap-port">Port</label>
+          <input id="ldap-port" name="port" type="number" data-preset-field="port" value="{{ ldap.port if ldap else '636' }}" required>
+        </div>
+        <div class="notif-field">
+          <label for="base-dn">Base DN</label>
+          <input id="base-dn" name="base_dn" data-preset-field="base_dn_example" value="{{ ldap.base_dn if ldap else '' }}" placeholder="dc=example,dc=com" required>
+        </div>
+        <div class="notif-field">
+          <label for="bind-dn">Bind DN</label>
+          <input id="bind-dn" name="bind_dn" data-preset-field="bind_dn_example" value="{{ ldap.bind_dn if ldap and ldap.bind_dn else '' }}" placeholder="cn=readonly,dc=example,dc=com">
+        </div>
+        <div class="notif-field">
+          <label for="bind-password">Bind Password</label>
+          <input id="bind-password" name="bind_password" type="password" placeholder="{{ 'Stored password' if ldap and ldap.encrypted_bind_password else 'Optional' }}">
+        </div>
+        <div class="notif-field">
+          <label for="user-filter">User Filter</label>
+          <input id="user-filter" name="user_filter" data-preset-field="user_filter" value="{{ ldap.user_filter if ldap else '(objectClass=person)' }}">
+        </div>
+        <div class="notif-field">
+          <label for="default-role">Default Role</label>
+          <select id="default-role" name="default_role">
+            {% for r in roles %}
+            <option value="{{ r.value }}" {{ 'selected' if ldap and ldap.default_role == r.value else '' }}>{{ r.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="notif-form-row">
+        <label class="notif-toggle"><input type="checkbox" name="use_ssl" value="true" {{ 'checked' if not ldap or ldap.use_ssl else '' }}><span>Use LDAPS</span></label>
+        <label class="notif-toggle"><input type="checkbox" name="start_tls" value="true" {{ 'checked' if ldap and ldap.start_tls else '' }}><span>Use STARTTLS</span></label>
+        <label class="notif-toggle"><input type="checkbox" name="auto_disable_missing" value="true" {{ 'checked' if ldap and ldap.auto_disable_missing else '' }}><span>Disable missing LDAP users</span></label>
+        <label class="notif-toggle"><input type="checkbox" name="enabled" value="true" {{ 'checked' if ldap and ldap.enabled else '' }}><span>Enable directory sync</span></label>
+      </div>
+
+      <div class="ldap-section">
+        <h3 class="ops-section-title">Attribute Mapping</h3>
+        <div class="notif-form-grid ldap-form-grid">
+          <div class="notif-field"><label>Email</label><input name="email_attribute" data-preset-field="email_attribute" value="{{ ldap.email_attribute if ldap else 'mail' }}"></div>
+          <div class="notif-field"><label>Display Name</label><input name="display_name_attribute" data-preset-field="display_name_attribute" value="{{ ldap.display_name_attribute if ldap else 'displayName' }}"></div>
+          <div class="notif-field"><label>Username</label><input name="username_attribute" data-preset-field="username_attribute" value="{{ ldap.username_attribute if ldap else 'uid' }}"></div>
+          <div class="notif-field"><label>Groups</label><input name="member_of_attribute" data-preset-field="member_of_attribute" value="{{ ldap.member_of_attribute if ldap else 'memberOf' }}"></div>
+        </div>
+      </div>
+
+      <div class="ldap-section">
+        <h3 class="ops-section-title">Role Group DNs</h3>
+        <p class="ldap-help-text">One group DN per line. Highest matching role wins: admin, security engineer, operator, analyst, viewer.</p>
+        <div class="ldap-role-grid">
+          <div class="notif-field"><label>Admin</label><textarea name="admin_group_dns" placeholder="One group DN per line">{{ ldap.admin_group_dns if ldap else '' }}</textarea></div>
+          <div class="notif-field"><label>Security Engineer</label><textarea name="security_engineer_group_dns">{{ ldap.security_engineer_group_dns if ldap else '' }}</textarea></div>
+          <div class="notif-field"><label>Operator</label><textarea name="operator_group_dns">{{ ldap.operator_group_dns if ldap else '' }}</textarea></div>
+          <div class="notif-field"><label>Analyst</label><textarea name="analyst_group_dns">{{ ldap.analyst_group_dns if ldap else '' }}</textarea></div>
+          <div class="notif-field"><label>Viewer</label><textarea name="viewer_group_dns">{{ ldap.viewer_group_dns if ldap else '' }}</textarea></div>
+        </div>
+      </div>
+
+      <div class="notif-form-actions">
+        <button type="submit" class="btn btn-primary">Save Directory Settings</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if ldap and ldap.host %}
+<div class="dashboard-grid">
+  <div class="ops-panel">
+    <div class="table-card-header">
+      <div>
+        <h2>Manual Actions</h2>
+        <p>Test the LDAP query or run a manual sync. No Authentik connection is preconfigured.</p>
+      </div>
+      {% if ldap.last_sync_at %}<span class="text-muted">Last sync {{ ldap.last_sync_at }}</span>{% endif %}
+    </div>
+    <div class="ops-action-bar ldap-actions">
+      <form method="post" action="/management/directory/test"><button type="submit" class="btn">Test Query</button></form>
+      <form method="post" action="/management/directory/preview"><button type="submit" class="btn">Preview Sync</button></form>
+      <form method="post" action="/management/directory/sync" onsubmit="return confirm('Run LDAP sync and update Moonwing users?')"><button type="submit" class="btn btn-primary">Run Sync</button></form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if preview %}
+<div class="dashboard-grid">
+  <div class="ops-panel table-card-command">
+    <div class="table-card-header">
+      <div>
+        <h2>Sync Preview</h2>
+        <p>{{ preview.summary.created }} create, {{ preview.summary.updated }} update, {{ preview.summary.disabled }} disable, {{ preview.summary.conflicts }} conflicts, {{ preview.summary.skipped }} skipped</p>
+      </div>
+    </div>
+    <table class="directory-preview-table">
+      <thead><tr><th>Action</th><th>User</th><th>Role</th><th>Current</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for row in preview.rows %}
+        <tr>
+          <td><span class="badge badge-info">{{ row.action }}</span></td>
+          <td><strong>{{ row.display_name }}</strong><span>{{ row.email }}</span></td>
+          <td>{{ row.role }}</td>
+          <td>{{ row.current_role }}{% if row.current_status %} / {{ row.current_status }}{% endif %}</td>
+          <td>{{ row.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+</div>
+
+<script>
+const providerSelect = document.getElementById('provider-type');
+if (providerSelect) {
+  const presets = JSON.parse(providerSelect.dataset.presets || '{}');
+  providerSelect.addEventListener('change', () => {
+    const preset = presets[providerSelect.value] || {};
+    document.querySelectorAll('[data-preset-field]').forEach((field) => {
+      const key = field.dataset.presetField;
+      if (preset[key] !== undefined && !field.value) field.value = preset[key];
+    });
+    const ssl = document.querySelector('input[name="use_ssl"]');
+    const startTls = document.querySelector('input[name="start_tls"]');
+    if (ssl && preset.use_ssl !== undefined) ssl.checked = Boolean(preset.use_ssl);
+    if (startTls && preset.start_tls !== undefined) startTls.checked = Boolean(preset.start_tls);
+  });
+}
+</script>
+{% endblock %}
