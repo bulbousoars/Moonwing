@@ -6,6 +6,10 @@
   <p>Choose whether Moonwing should inspect a reachable service or analyze source material.</p>
 </div>
 
+{% if error %}
+<div class="probe-result error" style="max-width:760px; margin-bottom:16px;">{{ error }}</div>
+{% endif %}
+
 <div class="detail-card" style="max-width:760px">
   <form method="post" action="/runs/new">
     <div class="form-group">
@@ -46,12 +50,42 @@
     </div>
 
     <div class="form-group">
+      <label for="execution_mode">Execution Mode</label>
+      <select id="execution_mode" name="execution_mode">
+        <option value="api">API — direct call to the provider's HTTP API using the credential's API key</option>
+        <option value="cli">CLI — invokes the local claude/codex/gemini binary; uses your local login (subscription)</option>
+      </select>
+      <small style="color:var(--text-muted)">Switch between modes to see which providers each one supports.</small>
+    </div>
+
+    {% set provider_labels = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'google': 'Google', 'openrouter': 'OpenRouter', 'ollama': 'Ollama'} %}
+    <div class="form-group">
+      <label for="provider">Provider</label>
+      <select id="provider" name="provider">
+        {% for key, label in provider_labels.items() %}
+        <option value="{{ key }}"
+          data-api-available="{{ '1' if key in api_available_providers else '0' }}"
+          data-cli-available="{{ '1' if key in cli_available_providers else '0' }}"
+          data-cli-binary="{{ cli_binaries.get(key, '') }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <small id="provider_hint" style="color:var(--text-muted)"></small>
+    </div>
+
+    <div class="form-group">
+      <label for="model">Model</label>
+      <select id="model" name="model" required></select>
+      <small style="color:var(--text-muted)">Lists are starter sets — verify against each vendor's official docs.</small>
+    </div>
+
+    <div class="form-group" id="credential_group">
       <label for="credential_id">Credential</label>
       <select id="credential_id" name="credential_id" required>
         {% for credential in credentials %}
-        <option value="{{ credential.id }}">{{ credential.display_name }} ({{ credential.provider }})</option>
+        <option value="{{ credential.id }}" data-provider="{{ credential.provider }}">{{ credential.display_name }} ({{ credential.provider }})</option>
         {% endfor %}
       </select>
+      <small id="credential_hint" style="color:var(--text-muted)"></small>
     </div>
 
     <div class="form-group">
@@ -63,46 +97,67 @@
       </select>
     </div>
 
-    {% set provider_labels = {'openai': 'OpenAI', 'anthropic': 'Anthropic', 'google': 'Google', 'openrouter': 'OpenRouter', 'ollama': 'Ollama'} %}
-    <div class="form-group">
-      <label for="provider">Provider</label>
-      <select id="provider" name="provider">
-        {% for key, label in provider_labels.items() %}
-          {% set is_available = key in available_providers %}
-          <option value="{{ key }}"
-            {% if not is_available %}disabled{% endif %}
-            {% if key == initial_provider %}selected{% endif %}
-            style="{% if not is_available %}color: var(--text-muted, #999);{% endif %}">
-            {{ label }}{% if not is_available %} — no credential{% endif %}
-          </option>
-        {% endfor %}
-      </select>
-      {% if available_providers|length == 1 and 'ollama' in available_providers %}
-      <small style="color:var(--text-muted)">No API credentials yet — only Ollama is available. <a href="/credentials/new">Add a credential</a> to enable other providers.</small>
-      {% endif %}
-    </div>
-
-    <div class="form-group">
-      <label for="model">Model</label>
-      <select id="model" name="model" required></select>
-      <small style="color:var(--text-muted)">Models populate from the selected provider. Lists are starter sets — verify against vendor docs.</small>
-    </div>
-
-    <div class="form-group">
-      <label for="execution_mode">Execution Mode</label>
-      <select id="execution_mode" name="execution_mode">
-        <option value="api">API</option>
-        <option value="cli">CLI</option>
-      </select>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Launch Scan</button>
+    <button type="submit" class="btn btn-primary" id="launch_btn">Launch Scan</button>
   </form>
 </div>
 
 <script>
-  // Map of provider -> list of selectable models, injected from the server.
   const PROVIDER_MODELS = {{ provider_models|tojson }};
+  const INITIAL_PROVIDER = {{ initial_provider|tojson }};
+
+  function _modeIs(value) { return document.getElementById('execution_mode').value === value; }
+
+  function _refreshProviderOptions() {
+    const providerEl = document.getElementById('provider');
+    const mode = document.getElementById('execution_mode').value;
+    let firstEnabled = null;
+    let currentSelected = providerEl.value;
+    let currentStillEnabled = false;
+
+    Array.from(providerEl.options).forEach(opt => {
+      const apiOk = opt.dataset.apiAvailable === '1';
+      const cliOk = opt.dataset.cliAvailable === '1';
+      const enabled = (mode === 'api') ? apiOk : cliOk;
+      opt.disabled = !enabled;
+      opt.style.color = enabled ? '' : 'var(--text-muted, #999)';
+      // Suffix (no credential / requires X CLI) when disabled — undecorated when enabled.
+      const baseLabel = opt.textContent.split(' — ')[0];
+      if (enabled) {
+        opt.textContent = baseLabel;
+      } else {
+        const reason = (mode === 'api') ? 'no credential' : 'no CLI binary mapped';
+        opt.textContent = baseLabel + ' — ' + reason;
+      }
+      if (enabled) {
+        if (firstEnabled === null) firstEnabled = opt.value;
+        if (opt.value === currentSelected) currentStillEnabled = true;
+      }
+    });
+
+    if (!currentStillEnabled && firstEnabled !== null) {
+      providerEl.value = firstEnabled;
+    }
+    _refreshProviderHint();
+    _populateModelOptions();
+    _refreshCredentialFilter();
+  }
+
+  function _refreshProviderHint() {
+    const providerEl = document.getElementById('provider');
+    const opt = providerEl.options[providerEl.selectedIndex];
+    const hint = document.getElementById('provider_hint');
+    if (!opt) { hint.textContent = ''; return; }
+    if (_modeIs('cli')) {
+      const bin = opt.dataset.cliBinary;
+      hint.textContent = bin
+        ? 'CLI mode will invoke the "' + bin + '" binary on the Moonwing host. Make sure it is installed and authenticated.'
+        : 'CLI mode is unavailable for this provider.';
+    } else {
+      hint.textContent = (providerEl.value === 'ollama')
+        ? 'Ollama runs locally — no API key required.'
+        : 'API mode uses the credential below to authenticate.';
+    }
+  }
 
   function _populateModelOptions() {
     const provider = document.getElementById('provider').value;
@@ -126,7 +181,58 @@
     });
   }
 
-  document.getElementById('provider').addEventListener('change', _populateModelOptions);
-  _populateModelOptions();
+  function _refreshCredentialFilter() {
+    const provider = document.getElementById('provider').value;
+    const credEl = document.getElementById('credential_id');
+    const hint = document.getElementById('credential_hint');
+    const cliMode = _modeIs('cli');
+    let firstMatch = null;
+    let anyMatch = false;
+    Array.from(credEl.options).forEach(opt => {
+      const credProvider = opt.dataset.provider;
+      const matches = credProvider === provider;
+      if (cliMode) {
+        // CLI mode: any credential is acceptable (used for audit only).
+        // Show all; pick the first matching provider when possible.
+        opt.disabled = false;
+        opt.style.display = '';
+      } else {
+        // API mode: only show credentials whose provider matches.
+        opt.disabled = !matches;
+        opt.style.display = matches ? '' : 'none';
+      }
+      if (matches && firstMatch === null) firstMatch = opt.value;
+      if (matches) anyMatch = true;
+    });
+
+    if (cliMode) {
+      hint.innerHTML = 'CLI mode authenticates via your local login (e.g. <code>claude login</code>, <code>codex auth login</code>). The credential below is recorded for audit only — pick any.';
+      // Don't force a re-select in CLI mode; user's choice is fine.
+    } else {
+      if (anyMatch && firstMatch !== null) {
+        // Move selection to first matching credential if current one is hidden.
+        const current = credEl.options[credEl.selectedIndex];
+        if (!current || current.dataset.provider !== provider) {
+          credEl.value = firstMatch;
+        }
+        hint.textContent = '';
+      } else {
+        hint.innerHTML = 'No <strong>' + provider + '</strong> credential exists. <a href="/credentials/new">Add one</a>, or switch to CLI mode if you have the local binary installed.';
+      }
+    }
+  }
+
+  // Wire up listeners and run once on load.
+  document.getElementById('execution_mode').addEventListener('change', _refreshProviderOptions);
+  document.getElementById('provider').addEventListener('change', () => { _refreshProviderHint(); _populateModelOptions(); _refreshCredentialFilter(); });
+
+  // Set initial provider selection BEFORE the first refresh so we land on a working default.
+  (function() {
+    const providerEl = document.getElementById('provider');
+    for (const opt of providerEl.options) {
+      if (opt.value === INITIAL_PROVIDER) { opt.selected = true; break; }
+    }
+  })();
+  _refreshProviderOptions();
 </script>
 {% endblock %}

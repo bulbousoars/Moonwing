@@ -19,7 +19,11 @@ from sqlalchemy.orm import Session
 
 from moonwing.api.deps import get_db
 from moonwing.api.deps import _get_settings
-from moonwing.services.ai_provider_probe import PROVIDER_DEFAULT_MODELS, PROVIDER_MODELS
+from moonwing.services.ai_provider_probe import (
+    PROVIDER_CLI_BINARIES,
+    PROVIDER_DEFAULT_MODELS,
+    PROVIDER_MODELS,
+)
 from moonwing.services.auth import create_session_token, create_service_token, hash_password, hash_service_token, verify_password
 from moonwing.services.crypto import CryptoError, decrypt_api_key, encrypt_api_key, mask_api_key
 from moonwing.services.finding_detail_display import build_finding_details, format_evidence_refs
@@ -795,9 +799,7 @@ def system_updates_apply(request: Request, db: Session = Depends(get_db), confir
     })
 
 
-@router.get('/runs/new', response_class=HTMLResponse)
-def run_form(request: Request, db: Session = Depends(get_db), target: str | None = None):
-    _require(request, 'launch_scan')
+def _build_run_form_context(request: Request, db: Session, *, target: str = '', error: str = '') -> dict:
     targets = [
         {'id': str(t.id), 'display_name': t.display_name, 'target_type': t.target_type}
         for t in db.query(Target).order_by(Target.display_name).all()
@@ -814,24 +816,36 @@ def run_form(request: Request, db: Session = Depends(get_db), target: str | None
         {'id': str(p.id), 'name': p.name}
         for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.name).all()
     ]
-    # Ollama needs no API key, so it is always selectable; everything else
-    # requires at least one credential of that provider before the option lights up.
-    available_providers = {c['provider'] for c in credentials} | {'ollama'}
+    api_available_providers = {c['provider'] for c in credentials} | {'ollama'}
+    cli_available_providers = set(PROVIDER_CLI_BINARIES.keys())
     initial_provider = next(
-        (p for p in ['anthropic', 'openai', 'google', 'openrouter', 'ollama'] if p in available_providers),
+        (p for p in ['anthropic', 'openai', 'google', 'openrouter', 'ollama'] if p in api_available_providers),
         'anthropic',
     )
-    return _render(request, 'run_form.html', {
+    return {
         'active': 'launch',
         'targets': targets,
         'users': users,
         'credentials': credentials,
         'profiles': profiles,
-        'preselect_target': target or '',
+        'preselect_target': target,
         'provider_models': PROVIDER_MODELS,
-        'available_providers': sorted(available_providers),
+        'api_available_providers': sorted(api_available_providers),
+        'cli_available_providers': sorted(cli_available_providers),
+        'cli_binaries': PROVIDER_CLI_BINARIES,
         'initial_provider': initial_provider,
-    })
+        'error': error,
+    }
+
+
+def _render_run_form_error(request: Request, db: Session, *, error: str):
+    return _render(request, 'run_form.html', _build_run_form_context(request, db, error=error))
+
+
+@router.get('/runs/new', response_class=HTMLResponse)
+def run_form(request: Request, db: Session = Depends(get_db), target: str | None = None):
+    _require(request, 'launch_scan')
+    return _render(request, 'run_form.html', _build_run_form_context(request, db, target=target or ''))
 
 
 @router.post('/runs/new')
@@ -848,6 +862,23 @@ def run_create(
     execution_mode: str = Form('api'),
 ):
     _require(request, 'launch_scan')
+    # In API mode, the credential's provider must match the run's provider —
+    # otherwise the worker will use the wrong API key and the run will fail.
+    # CLI mode uses local auth (claude/codex/gemini login), so any credential
+    # is acceptable for record-keeping.
+    if execution_mode == 'api':
+        cred = db.query(Credential).filter(Credential.id == UUID(credential_id)).first()
+        if cred is None:
+            return _render_run_form_error(
+                request, db,
+                error='Selected credential not found. Pick a credential from the list and try again.',
+            )
+        if cred.provider != provider and provider != 'ollama':
+            return _render_run_form_error(
+                request, db,
+                error=f"Credential '{cred.display_name}' is for {cred.provider}, but the selected provider is {provider}. "
+                      f"Pick a {provider} credential, switch to CLI execution mode, or change the provider.",
+            )
     run = Run(
         job_family=job_family,
         status='queued',

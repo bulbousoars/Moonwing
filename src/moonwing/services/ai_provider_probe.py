@@ -3,6 +3,18 @@ from __future__ import annotations
 import httpx
 
 
+# Which local CLI binary handles each provider in CLI execution mode.
+# Authoritative source of truth used by both the worker (clearwing_runner.py)
+# and the Launch Scan form for the binary-required hint.
+PROVIDER_CLI_BINARIES: dict[str, str] = {
+    "anthropic": "claude",
+    "openai": "codex",
+    "openrouter": "codex",
+    "google": "gemini",
+    "ollama": "codex",  # codex with --local-provider ollama
+}
+
+
 PROVIDER_DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-5.5",
     "anthropic": "claude-sonnet-4-6",
