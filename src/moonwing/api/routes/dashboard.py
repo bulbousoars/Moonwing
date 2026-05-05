@@ -56,6 +56,7 @@ from moonwing.services.notifications import (
 from moonwing.services.permissions import ASSIGNABLE_ROLES, can, require_role
 from moonwing.services.sensor_installer import (
     InstallerConfigError,
+    build_windows_sensor_zip_bytes,
     render_linux_installer,
     render_windows_installer,
 )
@@ -607,6 +608,24 @@ def sensor_install_windows(request: Request):
         body,
         media_type='text/x-powershell',
         headers={'Content-Disposition': 'attachment; filename="moonwing-sensor-install.ps1"'},
+    )
+
+
+@router.get('/sensors/install/windows-bundle.zip')
+def sensor_install_windows_bundle(request: Request):
+    _require(request, 'manage_sensors')
+    settings = _get_settings()
+    try:
+        blob = build_windows_sensor_zip_bytes(
+            manager_url=_manager_base_url(request),
+            enrollment_token=settings.sensor_enrollment_token,
+        )
+    except InstallerConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(
+        content=blob,
+        media_type='application/zip',
+        headers={'Content-Disposition': 'attachment; filename="moonwing-sensor-windows.zip"'},
     )
 
 

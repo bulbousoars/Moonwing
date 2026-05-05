@@ -6,11 +6,69 @@ Behind the scenes a database stores users, scans, artifacts, policies, and senso
 
 ---
 
+## Super simple (follow in order)
+
+These are the **short** instructions. Use the rest of the README when you need detail.
+
+### A) Start Moonwing on a Linux server with Docker
+
+You need: a terminal open on that server, Docker, Git, and about 10 minutes.
+
+**Step 1 — go to a folder and download Moonwing**
+
+Paste this whole block, press **Enter**, wait until it finishes:
+
+```bash
+sudo mkdir -p /opt/moonwing && sudo chown "$USER:$USER" /opt/moonwing && cd /opt/moonwing && git clone https://github.com/bulbousoars/Moonwing.git && cd Moonwing
+```
+
+(Optional: `git checkout v0.2.0` first if you deploy from version tags.)
+
+**Step 2 — configure secrets**
+
+Paste this, press **Enter**. A text editor opens:
+
+```bash
+cp .env.example .env && ${EDITOR:-nano} .env
+```
+
+Fill in at least **`MOONWING_SESSION_SECRET`**, **`MOONWING_ENCRYPTION_KEY`**, and **`MOONWING_SENSOR_ENROLLMENT_TOKEN`** (the file explains how). Save and close the editor.
+
+**Step 3 — start everything**
+
+```bash
+./scripts/moonwing-up.sh
+```
+
+**Step 4 — open Moonwing in a browser**
+
+From your own PC, visit **`http://THE_SERVER_IP:8000`** (replace with your server’s IP or hostname). Finish the setup screens.
+
+Production: put **HTTPS** in front with your usual reverse proxy.
+
+### B) Put a sensor on a Windows PC (easy)
+
+Someone with **Sensors** permission in Moonwing signs in → **Sensors** → **Install sensor**.
+
+**Step 1** — Click **Download Windows installer (ZIP)**.
+
+**Step 2** — Open the ZIP file, drag **all** files into one folder (for example Desktop → `Moonwing-sensor`).
+
+**Step 3** — Double-click **`Run Moonwing Sensor Setup.bat`**. When Windows asks for permission, choose **Yes**.
+
+**Step 4** — Wait until the window says the install finished. The PC must be able to reach your Moonwing address over the network.
+
+We ship a **ZIP + double-click setup** instead of one big **.exe** so you’re not blocked on code signing yet; an optional signed installer may come later.
+
+For Linux sensors, stay on **Sensors → Install** and use the **Linux** download, or follow [`deploy/sensors/README.md`](deploy/sensors/README.md).
+
+---
+
 ## Prerequisites
 
 Install on the machine that will host Moonwing:
 
-- **Docker Engine** and the **Compose v2** plugin (`docker compose …`)
+- **Docker Engine** and the **Compose v2** plugin (`docker compose …`), **v2.23 or newer** — the stack uses Compose’s **“init job”** semantics so database migrations run automatically before the API starts.
 - **Git** (`git`)
 
 You open **one TCP port** to users (normally **8000** for the Compose layout below, often **443** in production after you put TLS in front). Endpoint sensors reach the **same public address** over HTTPS—plan a DNS name early so scripts and SSO stay simple.
@@ -31,83 +89,51 @@ ZIP is acceptable only where Git is forbidden; expect a heavier manual bump proc
 
 ### Install steps (first boot)
 
-Pick a stable directory owned by whoever runs Docker (often `/opt` on Linux):
-
 ```bash
-sudo mkdir -p /opt/moonwing
-sudo chown "$USER:$USER" /opt/moonwing
-cd /opt/moonwing
+sudo mkdir -p /opt/moonwing && sudo chown "$USER:$USER" /opt/moonwing && cd /opt/moonwing
 
-git clone https://github.com/bulbousoars/Moonwing.git
-cd Moonwing
-
-# Optional: deploy a numbered release tag when you publish them
-# git checkout v0.2.0
+git clone https://github.com/bulbousoars/Moonwing.git && cd Moonwing
+# Optional: git checkout v0.2.0
 
 cp .env.example .env
+${EDITOR:-nano} .env
 ```
 
-Edit `.env`. At minimum for a serious deployment you should assign:
+Set at least **`MOONWING_SESSION_SECRET`**, **`MOONWING_ENCRYPTION_KEY`**, and **`MOONWING_SENSOR_ENROLLMENT_TOKEN`**, and fix database / MinIO passwords if you changed them anywhere (details in [.env.example](.env.example)).
 
-- **`MOONWING_SESSION_SECRET`** — long random secret for cookie sessions  
-- **`MOONWING_ENCRYPTION_KEY`** — Fernet key (see [.env.example](.env.example) comment); needed before storing integration API keys  
-- **`MOONWING_SENSOR_ENROLLMENT_TOKEN`** — long random string; anyone with it may register sensors—rotate deliberately  
-- Change **Postgres / MinIO** passwords inside **both** Compose services and **`MOONWING_DATABASE_URL` / `.env`** if you expose Postgres or MinIO past localhost  
-
-Start the stack and create database tables:
+Start everything (infra health checks, **`alembic upgrade head`** once via `moonwing-migrate`, then API + worker):
 
 ```bash
-docker compose --profile app up -d --build
-docker compose exec moonwing-api python -m alembic upgrade head
+./scripts/moonwing-up.sh
 ```
 
-Check health from the Docker host:
+(`docker compose --profile app up -d --build` is equivalent if you omit the helper.) Requires **Compose v2.23+** for `service_completed_successfully`.
+
+Smoke test:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/health
 ```
 
-Browse to `http://YOUR_SERVER:8000`, or your public HTTPS URL once a reverse proxy terminates TLS. Complete any first-run prompts to create your administrator identity.
-
-Expose **HTTPS** publicly for production (`reverse proxy → moonwing-api:8000`; put OIDC and browser flows on that canonical URL).
+Browse to `http://YOUR_SERVER:8000`, or HTTPS behind your reverse proxy, and finish first-run administrator setup.
 
 ### Updating after `git pull`
 
-Run from the clone root:
-
 ```bash
-git pull origin main
-# or checkout a newer tag explicitly
-
-docker compose --profile app up -d --build
-docker compose exec moonwing-api python -m alembic upgrade head
+git pull origin main && ./scripts/moonwing-up.sh
 ```
+
+Rebuilding runs the migration container again during `up`; **`alembic upgrade head`** is idempotent.
 
 ---
 
 ## Sensors (fleet endpoints)
 
-Agents **call into** Moonwing—they do not run inside the Compose file on arbitrary LAN machines.
+Agents **call into** Moonwing—they do not run inside the Compose file.
 
-Requirements:
+**Easiest:** sign in → **Sensors → Install sensor** → use the **Windows ZIP** or **Linux script** from that page (same idea as [Super simple](#super-simple-follow-in-order), section **B**).
 
-1. **Reachable HTTPS (or LAN HTTP only if policy allows)** on a **hostname or stable IP everyone agrees on** (`https://moonwing.company.internal`, etc.).
-2. **Enrollment token**: set `MOONWING_SENSOR_ENROLLMENT_TOKEN` in `.env`; copy the plaintext value once from **Sensors → Install** in the web UI during rollout waves.
-
-Fleet-friendly scripts checked into this repo (same Git clone admins already use):
-
-- [`deploy/sensors/install-sensor.sh`](deploy/sensors/install-sensor.sh) — Linux (root), `curl` + `python3`  
-- [`deploy/sensors/install-sensor.ps1`](deploy/sensors/install-sensor.ps1) — Windows (elevated PowerShell)  
-
-Supply:
-
-```bash
-export MOONWING_MANAGER_URL=https://moonwing.company.internal
-export MOONWING_ENROLLMENT_TOKEN='<paste-from-UI>'
-sudo ./deploy/sensors/install-sensor.sh
-```
-
-Details: [`deploy/sensors/README.md`](deploy/sensors/README.md).
+**Automation / fleets:** [`deploy/sensors/README.md`](deploy/sensors/README.md) — scripts take `MOONWING_MANAGER_URL` + `MOONWING_ENROLLMENT_TOKEN` from the UI.
 
 ---
 
@@ -115,11 +141,10 @@ Details: [`deploy/sensors/README.md`](deploy/sensors/README.md).
 
 Without `--profile app` you get Postgres, Redis, and MinIO only (for developers coupling a local Python process to those services).
 
-With **`--profile app`**, Compose also builds **`moonwing-api`** (website + REST API on **8000**) and **`moonwing-worker`** from this repository’s Dockerfile. Persisted Docker volumes retain database and MinIO data across restarts.
+With **`--profile app`**, Compose also builds **`moonwing-api`**, **`moonwing-worker`**, and a **one-shot `moonwing-migrate`** container from this repository’s Dockerfile. **`moonwing-migrate`** waits for Postgres to become healthy, runs **`alembic upgrade head`**, exits successfully, and only then API/worker start (`service_completed_successfully`). Persisted Docker volumes retain database and MinIO data across restarts.
 
-Those two services use **`depends_on: service_healthy`**: Docker will not start **`moonwing-api`** or **`moonwing-worker`** until Postgres (**`pg_isready`**), Redis (**`redis-cli ping`**), and MinIO (**`GET /minio/health/live`**) pass their **healthcheck** hooks. That avoids most race conditions where the app boots before the database socket or object store is ready.
+**`moonwing-api`** / **`moonwing-worker`** additionally wait until Redis and MinIO pass their **healthcheck** hooks. **`moonwing-api`** exposes its own Compose health probe for **`GET /health`** once the HTTP server listens.
 
-**`moonwing-api`** also has a Compose health probe that hits **`GET /health`** (process is up and responding). It does **not** verify the SQL schema—run **`alembic upgrade head`** right after the first **`up`**; until migrations exist the API may exit and restart until the schema is in place.
 | Service | Rough purpose |
 |---------|----------------|
 | moonwing-api | Browser UI & HTTP APIs |
@@ -171,6 +196,7 @@ pytest -v
 ```
 src/moonwing/         Application packages (API routes, worker, services)
 src/moonwing_sensor/  Endpoint agent library (alternate Windows install path uses it out of-repo)
+scripts/              Optional helpers (`moonwing-up.sh` → Compose app profile)
 deploy/sensors/       Thin curl/PowerShell enroll scripts for fleets
 deploy/ansible/       IaC supplemental roles when Compose is insufficient
 deploy/windows/       Python-based Windows installer (developer-style)

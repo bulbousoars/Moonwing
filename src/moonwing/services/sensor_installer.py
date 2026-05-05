@@ -7,6 +7,8 @@ heartbeat agent (systemd unit on Linux, Scheduled Task on Windows).
 
 from __future__ import annotations
 
+import io
+import zipfile
 from dataclasses import dataclass
 
 SUPPORTED_PLATFORMS = ("linux", "windows")
@@ -88,6 +90,54 @@ def render_installer(*, platform: str, manager_url: str, enrollment_token: str) 
             body=body,
         )
     raise InstallerConfigError(f"Unsupported sensor platform: {platform!r}")
+
+
+_WINDOWS_ZIP_README = """Moonwing sensor — Windows (easy install)
+=====================================
+
+1. Extract ALL files from this ZIP into one folder (for example Desktop\\Moonwing-sensor).
+2. Double-click:  Run Moonwing Sensor Setup.bat
+3. When Windows asks for administrator permission, choose Yes.
+4. Wait until the black window says the install finished.
+
+You need network access to this Moonwing server. The installer files were built for
+this manager only; do not share them with untrusted people.
+
+Troubleshooting: if your organization blocks scripts, use the advanced PowerShell
+installer from Sensors > Install in the Moonwing website instead.
+"""
+
+# Batch file: cd to extract dir, then elevate and run the companion .ps1 (handles paths with spaces).
+_WINDOWS_SETUP_BAT = r"""@echo off
+title Moonwing Sensor Setup
+cd /d "%~dp0"
+echo.
+echo Moonwing sensor installer
+echo ----------------------------
+echo Windows will ask for administrator permission — choose Yes.
+echo.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "(Start-Process -FilePath powershell.exe -Verb RunAs -Wait -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path -Path (Get-Location).Path -ChildPath 'Moonwing-Sensor-Install.ps1')))"
+if errorlevel 1 (
+  echo.
+  echo Something went wrong. Note any red text above.
+  pause
+  exit /b 1
+)
+echo.
+echo Install finished. You can close this window.
+pause
+"""
+
+
+def build_windows_sensor_zip_bytes(*, manager_url: str, enrollment_token: str) -> bytes:
+    """ZIP with double-click .bat + pre-filled .ps1 for non-technical Windows users."""
+    ps1 = render_windows_installer(manager_url=manager_url, enrollment_token=enrollment_token)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("README.txt", _WINDOWS_ZIP_README.replace("\n", "\r\n"))
+        zf.writestr("Moonwing-Sensor-Install.ps1", ps1.replace("\n", "\r\n"))
+        zf.writestr("Run Moonwing Sensor Setup.bat", _WINDOWS_SETUP_BAT.replace("\n", "\r\n"))
+    return buf.getvalue()
 
 
 # NOTE: In-repo equivalents (env / CLI manager URL + token): deploy/sensors/

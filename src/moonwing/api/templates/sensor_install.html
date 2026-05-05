@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
   <h1>Install a sensor</h1>
-  <p>Generate a self-contained installer that enrolls an endpoint with this manager.</p>
+  <p>Choose the computer type below. Files from this page only work with <strong>this</strong> Moonwing server—do not email them around like a normal attachment.</p>
   <div class="page-actions page-actions-split">
     <a href="/sensors" class="btn">&larr; Back to sensors</a>
   </div>
@@ -16,6 +16,13 @@
   environment and restart the API before downloading an installer.
 </div>
 {% else %}
+
+<div class="detail-card" style="margin-bottom:1.25rem;border-left:4px solid #3993d4;padding-left:1rem">
+  <h3 style="margin-top:0">Quick path</h3>
+  <p style="margin-bottom:0.35rem"><strong>This Windows PC:</strong> download the <strong>ZIP</strong> → unzip every file into one folder → double-click <code>Run Moonwing Sensor Setup.bat</code> → choose <strong>Yes</strong> when Windows asks.</p>
+  <p style="margin-bottom:0.35rem"><strong>This Linux machine:</strong> download the script and run it once as root (terminal), or ask whoever runs your servers to use the same file from the Moonwing GitHub repo.</p>
+  <p style="margin-bottom:0"><strong>Installing the Moonwing server itself?</strong> Follow the <a href="https://github.com/bulbousoars/Moonwing#super-simple-follow-in-order" target="_blank" rel="noopener noreferrer">“Super simple” checklist</a> on GitHub (<code>git clone</code>, edit <code>.env</code>, run <code>./scripts/moonwing-up.sh</code>).</p>
+</div>
 
 <div class="detail-card" style="margin-bottom:1.5rem">
   <h3>Manager details</h3>
@@ -66,22 +73,23 @@
   <div class="detail-card">
     <h3>
       <span class="badge badge-info">windows</span>
-      Windows endpoint
+      Windows endpoint (easy)
     </h3>
     <p>
-      PowerShell installer for Windows 10/11 and Server. Enrolls the host, drops the
-      heartbeat agent under <code>C:\ProgramData\Moonwing\sensor</code>, and registers
-      a SYSTEM-context scheduled task.
+      Recommended: a small ZIP you unzip and double-click. Inside is a short <strong>.bat</strong>
+      file that asks for administrator permission and runs the installer for you.
+      This is <strong>not</strong> a signed <code>.exe</code> yet—we may add a single setup program later.
     </p>
-    <p><strong>Requirements:</strong> Administrator PowerShell, .NET-based <code>Invoke-RestMethod</code>.</p>
-    <p style="margin-top:0.75rem">
-      <a href="/sensors/install/windows.ps1" class="btn btn-primary" download>Download installer</a>
-    </p>
+    <p><strong>You need:</strong> Windows 10 / 11 / Server, internet access to this Moonwing site, permission to approve a security prompt.</p>
+    <div style="margin-top:0.85rem;display:flex;flex-wrap:wrap;gap:0.5rem">
+      <a href="/sensors/install/windows-bundle.zip" class="btn btn-primary">Download Windows installer (ZIP)</a>
+      <a href="/sensors/install/windows.ps1" class="btn">Download PowerShell only (advanced)</a>
+    </div>
     <div style="margin-top:0.75rem">
       <p class="text-muted" style="margin:0 0 0.35rem 0">
-        Same caveats as Linux: use <code>deploy/sensors/install-sensor.ps1</code> when you need token + URL automation.
+        <strong>For IT automation</strong>, use the installer scripts in GitHub <code>deploy/sensors/</code> together with the Manager URL and enrollment token above.
       </p>
-      <strong>One-liner (elevated PowerShell)</strong>
+      <strong class="text-muted">One-liner</strong> <span class="text-muted">(already signed in to this site in a browser)</span>
       <pre class="json-view" style="white-space:pre-wrap">iwr '{{ manager_url }}/sensors/install/windows.ps1' -UseBasicParsing | iex</pre>
     </div>
   </div>

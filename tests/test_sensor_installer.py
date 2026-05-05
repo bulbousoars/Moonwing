@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import io
+import zipfile
+
 import pytest
 
 from moonwing.services.sensor_installer import (
     InstallerConfigError,
+    build_windows_sensor_zip_bytes,
     render_installer,
     render_linux_installer,
     render_windows_installer,
@@ -92,6 +96,26 @@ class TestRenderWindowsInstaller:
     def test_rejects_missing_token(self):
         with pytest.raises(InstallerConfigError):
             render_windows_installer(manager_url="https://m", enrollment_token="")
+
+
+class TestWindowsSensorZip:
+    def test_contains_ps1_setup_and_readme(self):
+        blob = build_windows_sensor_zip_bytes(
+            manager_url="https://moonwing.example.com",
+            enrollment_token="tok-enroll",
+        )
+        with zipfile.ZipFile(io.BytesIO(blob), "r") as zf:
+            names = set(zf.namelist())
+        assert names == {"README.txt", "Moonwing-Sensor-Install.ps1", "Run Moonwing Sensor Setup.bat"}
+        with zipfile.ZipFile(io.BytesIO(blob), "r") as zf:
+            ps1 = zf.read("Moonwing-Sensor-Install.ps1").decode("utf-8")
+            bat = zf.read("Run Moonwing Sensor Setup.bat").decode("ascii", errors="replace")
+            readme = zf.read("README.txt").decode("utf-8")
+        assert "tok-enroll" in ps1
+        assert "#requires -RunAsAdministrator" in ps1
+        assert "Moonwing-Sensor-Install.ps1" in bat
+        assert "@echo off" in bat
+        assert "double-click" in readme.lower()
 
 
 class TestRenderInstallerDispatch:

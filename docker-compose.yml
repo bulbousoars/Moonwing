@@ -1,4 +1,16 @@
 services:
+  moonwing-migrate:
+    profiles: ["app"]
+    build: .
+    restart: "no"
+    env_file: .env
+    environment:
+      MOONWING_DATABASE_URL: postgresql+psycopg://moonwing:moonwing@postgres:5432/moonwing
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+
   moonwing-api:
     profiles: ["app"]
     build: .
@@ -17,6 +29,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      moonwing-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -46,6 +60,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      moonwing-migrate:
+        condition: service_completed_successfully
 
   postgres:
     image: postgres:16

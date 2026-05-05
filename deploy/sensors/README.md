@@ -1,5 +1,18 @@
 # Endpoint sensor rollout (Compose + stable manager URL)
 
+## Easiest path — use the Moonwing website (good for beginners)
+
+Sign in → **Sensors** → **Install sensor**.
+
+| PC type | What to do |
+|---------|------------|
+| **Windows** | Click **Download Windows installer (ZIP)**. Unzip every file into one folder, then double-click **`Run Moonwing Sensor Setup.bat`**. Approve the Windows security prompt. |
+| **Linux** | Click **Download** on the Linux card and run that script once as **root** (or use `deploy/sensors/install-sensor.sh` from Git with URL + token from the page). |
+
+Below: **automated / terminal** rollout from a Git checkout.
+
+---
+
 This matches the **DNS/IP + UI token** model:
 
 1. **Manager** runs where endpoints can reach it—typically **`docker compose --profile app`** behind a stable **DNS name or IP** (`https://moonwing.internal.example.com` or `http://10.x.x.x:8000` with TLS ideally provided by your reverse proxy).
@@ -39,7 +52,7 @@ $env:MOONWING_ENROLLMENT_TOKEN = '<paste-from-ui>'
 
 ## Relationship to UI-generated installers
 
-**Management → Sensors → Install** can still download installers with the URL and token **pre-embedded**. The scripts here are identical in behavior—useful for Ansible, imaging, Intune scripts, or “curl this file from Git” workflows without logging into the UI on every host.
+**Management → Sensors → Install** offers **pre-filled** downloads: Linux `.sh`, Windows `.ps1`, and a **Windows ZIP** (double-click `.bat`) for non-technical users. The scripts in this folder are the same idea with URL + token supplied by you—useful for Ansible, imaging, Intune, or air-gapped copies of the repo.
 
 Operational behavior must stay aligned with `src/moonwing/services/sensor_installer.py`; update both if the enrollment heartbeat contract changes.
 
