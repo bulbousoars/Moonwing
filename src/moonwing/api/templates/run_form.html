@@ -79,12 +79,9 @@
     </div>
 
     <div class="form-group" id="credential_group">
-      <label for="credential_id">Credential</label>
-      <select id="credential_id" name="credential_id" required>
-        {% for credential in credentials %}
-        <option value="{{ credential.id }}" data-provider="{{ credential.provider }}">{{ credential.display_name }} ({{ credential.provider }})</option>
-        {% endfor %}
-      </select>
+      <label>Credential</label>
+      <input type="hidden" id="credential_id" name="credential_id" value="">
+      <div id="credential_display" style="padding:8px 10px; border:1px solid var(--border, #ccc); border-radius:4px; background:var(--bg-muted, #f7f7f7);"></div>
       <small id="credential_hint" style="color:var(--text-muted)"></small>
     </div>
 
@@ -104,6 +101,7 @@
 <script>
   const PROVIDER_MODELS = {{ provider_models|tojson }};
   const INITIAL_PROVIDER = {{ initial_provider|tojson }};
+  const CREDENTIALS = {{ credentials|tojson }};
 
   function _modeIs(value) { return document.getElementById('execution_mode').value === value; }
 
@@ -183,42 +181,31 @@
 
   function _refreshCredentialFilter() {
     const provider = document.getElementById('provider').value;
-    const credEl = document.getElementById('credential_id');
+    const mode = document.getElementById('execution_mode').value;
+    const credInput = document.getElementById('credential_id');
+    const display = document.getElementById('credential_display');
     const hint = document.getElementById('credential_hint');
-    const cliMode = _modeIs('cli');
-    let firstMatch = null;
-    let anyMatch = false;
-    Array.from(credEl.options).forEach(opt => {
-      const credProvider = opt.dataset.provider;
-      const matches = credProvider === provider;
-      if (cliMode) {
-        // CLI mode: any credential is acceptable (used for audit only).
-        // Show all; pick the first matching provider when possible.
-        opt.disabled = false;
-        opt.style.display = '';
-      } else {
-        // API mode: only show credentials whose provider matches.
-        opt.disabled = !matches;
-        opt.style.display = matches ? '' : 'none';
-      }
-      if (matches && firstMatch === null) firstMatch = opt.value;
-      if (matches) anyMatch = true;
-    });
+    const launchBtn = document.getElementById('launch_btn');
 
-    if (cliMode) {
-      hint.innerHTML = 'CLI mode authenticates via your local login (e.g. <code>claude login</code>, <code>codex auth login</code>). The credential below is recorded for audit only — pick any.';
-      // Don't force a re-select in CLI mode; user's choice is fine.
+    const match = CREDENTIALS.find(c => c.provider === provider) || null;
+
+    if (match) {
+      credInput.value = match.id;
+      display.textContent = match.display_name + ' (' + match.provider + ')';
+      display.style.color = '';
+      hint.textContent = (mode === 'cli')
+        ? 'Auto-selected for ' + provider + '. CLI mode authenticates via your local login; this credential is recorded for audit.'
+        : 'Auto-selected for ' + provider + '. API mode will use this credential to authenticate.';
+      launchBtn.disabled = false;
+      launchBtn.title = '';
     } else {
-      if (anyMatch && firstMatch !== null) {
-        // Move selection to first matching credential if current one is hidden.
-        const current = credEl.options[credEl.selectedIndex];
-        if (!current || current.dataset.provider !== provider) {
-          credEl.value = firstMatch;
-        }
-        hint.textContent = '';
-      } else {
-        hint.innerHTML = 'No <strong>' + provider + '</strong> credential exists. <a href="/credentials/new">Add one</a>, or switch to CLI mode if you have the local binary installed.';
-      }
+      credInput.value = '';
+      display.textContent = 'No ' + provider + ' credential available';
+      display.style.color = 'var(--danger, #c0392b)';
+      const modeLabel = (mode === 'cli') ? 'CLI' : 'API';
+      hint.innerHTML = 'No <strong>' + provider + '</strong> credential exists for ' + modeLabel + ' mode. <a href="/credentials/new">Add one</a>, or pick a different provider/mode.';
+      launchBtn.disabled = true;
+      launchBtn.title = 'No matching credential — add one or pick a different provider/mode.';
     }
   }
 
