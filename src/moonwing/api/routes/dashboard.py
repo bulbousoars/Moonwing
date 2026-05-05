@@ -1181,6 +1181,17 @@ def credential_connect_create(
     owner_user_id: str = Form(''),
 ):
     _require(request, 'manage_credentials')
+    owner_uuid = None
+    if owner_user_id.strip():
+        try:
+            owner_uuid = UUID(owner_user_id.strip())
+        except ValueError:
+            return _render(request, 'credential_connect.html', {
+                'active': 'settings',
+                'provider_defaults': PROVIDER_DEFAULT_MODELS,
+                'error': 'Owner User ID must be a valid UUID. Leave blank to create a shared credential, or paste the UUID from Management → Users.',
+                'form': {'display_name': display_name, 'provider': provider, 'owner_user_id': owner_user_id},
+            })
     encrypted = None
     masked = "(no key)"
     clean_key = api_key.strip()
@@ -1189,7 +1200,7 @@ def credential_connect_create(
         masked = mask_api_key(clean_key)
 
     cred = Credential(
-        owner_user_id=UUID(owner_user_id) if owner_user_id.strip() else None,
+        owner_user_id=owner_uuid,
         scope='shared',
         provider=provider,
         display_name=display_name,
@@ -1214,6 +1225,18 @@ def credential_create(
     owner_user_id: str = Form(''),
 ):
     _require(request, 'manage_credentials')
+    owner_uuid = None
+    if owner_user_id.strip():
+        try:
+            owner_uuid = UUID(owner_user_id.strip())
+        except ValueError:
+            return _render(request, 'credential_form.html', {
+                'active': 'settings',
+                'credential': {'display_name': display_name, 'provider': provider, 'scope': scope, 'owner_user_id': owner_user_id},
+                'action': '/credentials/new',
+                'error': 'Owner User ID must be a valid UUID. Leave blank to create a shared credential, or paste the UUID from Management → Users.',
+            })
+
     encrypted = None
     masked = ""
     if api_key.strip():
@@ -1221,7 +1244,7 @@ def credential_create(
         masked = mask_api_key(api_key.strip())
 
     cred = Credential(
-        owner_user_id=UUID(owner_user_id) if owner_user_id.strip() else None,
+        owner_user_id=owner_uuid,
         scope=scope,
         provider=provider,
         display_name=display_name,
