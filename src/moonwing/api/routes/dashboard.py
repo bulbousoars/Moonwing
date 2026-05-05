@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from moonwing.api.deps import get_db
 from moonwing.api.deps import _get_settings
-from moonwing.services.ai_provider_probe import PROVIDER_DEFAULT_MODELS
+from moonwing.services.ai_provider_probe import PROVIDER_DEFAULT_MODELS, PROVIDER_MODELS
 from moonwing.services.auth import create_session_token, create_service_token, hash_password, hash_service_token, verify_password
 from moonwing.services.crypto import CryptoError, decrypt_api_key, encrypt_api_key, mask_api_key
 from moonwing.services.finding_detail_display import build_finding_details, format_evidence_refs
@@ -814,6 +814,13 @@ def run_form(request: Request, db: Session = Depends(get_db), target: str | None
         {'id': str(p.id), 'name': p.name}
         for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.name).all()
     ]
+    # Ollama needs no API key, so it is always selectable; everything else
+    # requires at least one credential of that provider before the option lights up.
+    available_providers = {c['provider'] for c in credentials} | {'ollama'}
+    initial_provider = next(
+        (p for p in ['anthropic', 'openai', 'google', 'openrouter', 'ollama'] if p in available_providers),
+        'anthropic',
+    )
     return _render(request, 'run_form.html', {
         'active': 'launch',
         'targets': targets,
@@ -821,6 +828,9 @@ def run_form(request: Request, db: Session = Depends(get_db), target: str | None
         'credentials': credentials,
         'profiles': profiles,
         'preselect_target': target or '',
+        'provider_models': PROVIDER_MODELS,
+        'available_providers': sorted(available_providers),
+        'initial_provider': initial_provider,
     })
 
 

@@ -63,20 +63,29 @@
       </select>
     </div>
 
+    {% set provider_labels = {'openai': 'OpenAI', 'anthropic': 'Anthropic', 'google': 'Google', 'openrouter': 'OpenRouter', 'ollama': 'Ollama'} %}
     <div class="form-group">
       <label for="provider">Provider</label>
       <select id="provider" name="provider">
-        <option value="openai">OpenAI</option>
-        <option value="anthropic">Anthropic</option>
-        <option value="google">Google</option>
-        <option value="openrouter">OpenRouter</option>
-        <option value="ollama">Ollama</option>
+        {% for key, label in provider_labels.items() %}
+          {% set is_available = key in available_providers %}
+          <option value="{{ key }}"
+            {% if not is_available %}disabled{% endif %}
+            {% if key == initial_provider %}selected{% endif %}
+            style="{% if not is_available %}color: var(--text-muted, #999);{% endif %}">
+            {{ label }}{% if not is_available %} — no credential{% endif %}
+          </option>
+        {% endfor %}
       </select>
+      {% if available_providers|length == 1 and 'ollama' in available_providers %}
+      <small style="color:var(--text-muted)">No API credentials yet — only Ollama is available. <a href="/credentials/new">Add a credential</a> to enable other providers.</small>
+      {% endif %}
     </div>
 
     <div class="form-group">
       <label for="model">Model</label>
-      <input id="model" name="model" value="gpt-5.5" required>
+      <select id="model" name="model" required></select>
+      <small style="color:var(--text-muted)">Models populate from the selected provider. Lists are starter sets — verify against vendor docs.</small>
     </div>
 
     <div class="form-group">
@@ -90,4 +99,34 @@
     <button type="submit" class="btn btn-primary">Launch Scan</button>
   </form>
 </div>
+
+<script>
+  // Map of provider -> list of selectable models, injected from the server.
+  const PROVIDER_MODELS = {{ provider_models|tojson }};
+
+  function _populateModelOptions() {
+    const provider = document.getElementById('provider').value;
+    const modelEl = document.getElementById('model');
+    const models = PROVIDER_MODELS[provider] || [];
+    modelEl.innerHTML = '';
+    if (models.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(no models registered for this provider)';
+      opt.disabled = true;
+      modelEl.appendChild(opt);
+      return;
+    }
+    models.forEach((m, i) => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      if (i === 0) opt.selected = true;
+      modelEl.appendChild(opt);
+    });
+  }
+
+  document.getElementById('provider').addEventListener('change', _populateModelOptions);
+  _populateModelOptions();
+</script>
 {% endblock %}

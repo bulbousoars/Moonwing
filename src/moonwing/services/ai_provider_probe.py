@@ -11,6 +11,51 @@ PROVIDER_DEFAULT_MODELS: dict[str, str] = {
     "ollama": "llama3.1",
 }
 
+# Selectable models per provider for the Launch Scan form.
+# These are starter lists — verify against each provider's official docs and
+# adjust as model lineups change. The first entry is treated as the suggested
+# default when a provider is selected.
+PROVIDER_MODELS: dict[str, list[str]] = {
+    "anthropic": [
+        "claude-opus-4-7",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-5",
+        "claude-opus-4-1",
+        "claude-3-7-sonnet-latest",
+        "claude-3-5-haiku-latest",
+    ],
+    "openai": [
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-4.1",
+        "gpt-4o",
+        "o3",
+        "o1",
+    ],
+    "google": [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+    ],
+    "openrouter": [
+        "openai/gpt-5",
+        "anthropic/claude-opus-4-7",
+        "anthropic/claude-sonnet-4-6",
+        "google/gemini-2.5-pro",
+        "meta-llama/llama-3.3-70b-instruct",
+    ],
+    "ollama": [
+        "llama3.3",
+        "llama3.1",
+        "qwen2.5",
+        "mistral",
+        "codellama",
+    ],
+}
+
 OPENAI_COMPATIBLE_ENDPOINTS = {
     "openai": "https://api.openai.com/v1/chat/completions",
     "openrouter": "https://openrouter.ai/api/v1/chat/completions",
