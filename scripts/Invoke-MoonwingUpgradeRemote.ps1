@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   For Docker Compose installs on the server (see README). Requires OpenSSH client (ssh).
-  Authentication: use ssh-agent, an SSH key, or your configured default — interactive passwords are not scripted.
+  Authentication: use ssh-agent, an SSH key, or your configured default (interactive passwords are not scripted).
 
 .EXAMPLE
   .\scripts\Invoke-MoonwingUpgradeRemote.ps1 -HostName moonwing.internal -RemoteGitRoot /opt/moonwing/Moonwing

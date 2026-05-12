@@ -8,7 +8,7 @@ from moonwing.db.models import SensorEndpoint
 
 
 def aggregate_npm_inventory_rows(sensors: Sequence[SensorEndpoint]) -> list[dict[str, Any]]:
-    """Flatten per-sensor `inventory.npm_packages` into sortable table rows."""
+    """Flatten per-sensor ``inventory.npm_packages`` into sortable table rows."""
     rows: list[dict[str, Any]] = []
     for ep in sensors:
         inv = ep.inventory or {}

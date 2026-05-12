@@ -111,7 +111,7 @@ def collect_macos_apps(applications_path: str = "/Applications") -> list[dict[st
 
 
 def packages_from_npm_ls_tree(tree: dict[str, Any], *, origin_label: str) -> list[dict[str, str]]:
-    """Parse `npm list --json` style output (top-level ``dependencies`` only)."""
+    """Parse ``npm list --json`` style output (top-level ``dependencies`` only)."""
     out: list[dict[str, str]] = []
     deps = tree.get("dependencies")
     if not isinstance(deps, dict):
@@ -178,7 +178,9 @@ def _shallow_home_package_json_paths(*, max_files: int = 24) -> Iterator[Path]:
             yield pj
             yielded += 1
         try:
-            tier1_dirs = [p for p in tier0.iterdir() if p.is_dir() and not p.name.startswith(".") and p.name != "node_modules"]
+            tier1_dirs = [
+                p for p in tier0.iterdir() if p.is_dir() and not p.name.startswith(".") and p.name != "node_modules"
+            ]
         except OSError:
             continue
         for tier1 in tier1_dirs:
