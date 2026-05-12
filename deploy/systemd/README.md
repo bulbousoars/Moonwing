@@ -21,6 +21,17 @@ sudo bash deploy/systemd/install-on-host.sh
 
 This copies the unit files, rewrites the default **`/opt/moonwing/Moonwing`** paths to match the detected repo root (via Python), runs **`systemctl daemon-reload`**, and **`systemctl enable --now moonwing-auto-upgrade.timer`**.
 
+### Frequent upgrades (see `git` changes within minutes)
+
+Re-run install with **`MOONWING_AUTO_UPGRADE_INTERVAL_MIN`** set to an integer **1–1440** (minutes between the **end** of one upgrade run and the next scheduled trigger, plus **~90s** after boot):
+
+```bash
+cd /path/to/Moonwing
+sudo env MOONWING_AUTO_UPGRADE_INTERVAL_MIN=10 bash deploy/systemd/install-on-host.sh
+```
+
+This adds **`/etc/systemd/system/moonwing-auto-upgrade.timer.d/50-frequent.conf`** with **`OnUnitActiveSec=`** and reloads the timer. The original **daily ~04:15** calendar from the stock unit **still applies** as well (extra safety net). To remove frequent pulls later, delete that drop-in and `systemctl daemon-reload && systemctl restart moonwing-auto-upgrade.timer`.
+
 ## Install (manual copy)
 
 1. Copy unit files (edit paths first if your clone is not under `/opt/moonwing/Moonwing`):
@@ -68,16 +79,18 @@ cd D:\Projects\Moonwing   # or any clone with this commit
 .\deploy\systemd\Install-MoonwingSystemdAutoUpgradeRemote.ps1 `
   -SshConfig (Join-Path $s.session_dir 'ssh_config') `
   -TargetHost 192.168.1.215 `
-  -GitBranch main
+  -GitBranch dev `
+  -AutoUpgradeIntervalMinutes 10
 ```
 
-**Secops Moonwing** historically tracks **`dev`** — pass **`-GitBranch dev`** if that matches your server.
+**Secops Moonwing** historically tracks **`dev`** — pass **`-GitBranch dev`** if that matches your server. Use **`-AutoUpgradeIntervalMinutes 10`** (or `5`) so each successful upgrade schedules another pull a few minutes later; you stay off the box aside from the brokered SSH session this script opens.
 
 ## Behaviour
 
 | Piece | Role |
 |--------|------|
 | `moonwing-auto-upgrade.timer` | Runs daily (~**04:15** host local time) with **`RandomizedDelaySec=45min`** to avoid thundering herds |
+| `timer.d/50-frequent.conf` (optional) | **`OnUnitActiveSec=`** — repeat pull **`MOONWING_AUTO_UPGRADE_INTERVAL_MIN`** minutes after the last service run finished, plus **`OnBootSec=90s`** |
 | `moonwing-auto-upgrade.service` | One-shot: runs **`moonwing-upgrade.sh`** |
 | `scripts/moonwing-upgrade.sh` | Fetch / **`git pull --ff-only`**, Compose rebuild, **`curl` health** |
 

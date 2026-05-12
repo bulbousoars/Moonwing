@@ -7,9 +7,12 @@
   Pair with New-AgentSshSession.ps1 (use **-Admin** if the remote user needs passwordless sudo for
   `git pull` and `install-on-host.sh`). Pass the same **HostName** you used for the broker session.
 
-  Example:
+  Example (daily timer only):
     $s = & "$env:USERPROFILE\Scripts\homelab\New-AgentSshSession.ps1" -Agent cursor -HostName 192.168.1.215 -Admin
     & "$PSScriptRoot\Install-MoonwingSystemdAutoUpgradeRemote.ps1" -SshConfig (Join-Path $s.session_dir 'ssh_config') -TargetHost 192.168.1.215
+
+  Example (pull again ~10 min after each upgrade — active dev):
+    ... same $s ... -AutoUpgradeIntervalMinutes 10 -GitBranch dev
 
 .NOTES
   Requires: OpenSSH client, Python 3 on the remote (used by install-on-host.sh for unit templating).
@@ -28,6 +31,9 @@ param(
     [string]$GitBranch = 'main',
 
     [int]$GitTimeoutSec = 300,
+
+    [ValidateRange(0, 1440)]
+    [int]$AutoUpgradeIntervalMinutes = 0,
 
     [switch]$SkipGitPull
 )
@@ -69,7 +75,11 @@ REPO='$repoEsc'
 cd "`$REPO"
 git config --global --add safe.directory "`$REPO" 2>/dev/null || true
 $gitFetch
-sudo bash "`$REPO/deploy/systemd/install-on-host.sh"
+$(if ($AutoUpgradeIntervalMinutes -gt 0) {
+    "sudo env MOONWING_AUTO_UPGRADE_INTERVAL_MIN=$AutoUpgradeIntervalMinutes bash deploy/systemd/install-on-host.sh"
+} else {
+    "sudo bash deploy/systemd/install-on-host.sh"
+})
 "@
 
 $remoteBash = ($remoteBash -replace "`r`n", "`n") -replace "`r", "`n"

@@ -41,6 +41,24 @@ install -m 0644 "$TIMER_SRC" /etc/systemd/system/moonwing-auto-upgrade.timer
 systemctl daemon-reload
 systemctl enable --now moonwing-auto-upgrade.timer
 
+# Optional: frequent pull/rebuild cadence (e.g. active dev). Minutes between end of one
+# upgrade run and the next timer trigger (also ~90s after boot). Set via:
+#   MOONWING_AUTO_UPGRADE_INTERVAL_MIN=10 sudo bash install-on-host.sh
+_interval="${MOONWING_AUTO_UPGRADE_INTERVAL_MIN:-}"
+if [[ -n "$_interval" ]] && [[ "$_interval" =~ ^[0-9]+$ ]] && ((_interval >= 1 && _interval <= 1440)); then
+  mkdir -p /etc/systemd/system/moonwing-auto-upgrade.timer.d
+  cat > /etc/systemd/system/moonwing-auto-upgrade.timer.d/50-frequent.conf <<EOF
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=${_interval}min
+RandomizedDelaySec=90s
+AccuracySec=30s
+EOF
+  systemctl daemon-reload
+  systemctl restart moonwing-auto-upgrade.timer
+  echo "[install-on-host] installed timer drop-in 50-frequent.conf (every ${_interval} min after last run + daily calendar)"
+fi
+
 echo "[install-on-host] timer status:"
 systemctl status moonwing-auto-upgrade.timer --no-pager || true
 echo "[install-on-host] next triggers:"
