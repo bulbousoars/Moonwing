@@ -17,7 +17,8 @@ from sqlalchemy import select
 
 from moonwing.config import Settings
 from moonwing.db.models import Run
-from moonwing.services.ai_provider_probe import discover_ai_cli_tools
+from moonwing.services.ai_provider_probe import log_ai_cli_boot_diagnostics
+from moonwing.services.worker_cli_snapshot import upsert_cli_agent_snapshot
 from moonwing.db.session import build_session_factory
 from moonwing.services.run_schedule_service import materialize_due_schedules
 from moonwing.worker.object_store import MinioObjectStore
@@ -27,6 +28,18 @@ logger = logging.getLogger("moonwing.worker")
 
 # Graceful shutdown flag
 _shutdown = False
+
+
+def _persist_worker_cli_snapshot(session_factory, snapshot: dict) -> None:
+    session = session_factory()
+    try:
+        upsert_cli_agent_snapshot(session, snapshot)
+        session.commit()
+    except Exception:
+        logger.exception("failed to persist worker CLI agent snapshot")
+        session.rollback()
+    finally:
+        session.close()
 
 
 def _handle_signal(signum: int, _frame: object) -> None:
@@ -58,9 +71,8 @@ def bootstrap(settings: Settings | None = None) -> dict:
         settings.clearwing_binary,
     )
 
-    probe = discover_ai_cli_tools(settings, process_label="moonwing-worker")
-    parts = [f"{t['id']}:{'ok' if t['available'] else 'missing'}" for t in probe["tools"]]
-    logger.info("AI CLI tool probe (%s): %s", probe["process_label"], ", ".join(parts))
+    snap = log_ai_cli_boot_diagnostics(logger, settings, process_label="moonwing-worker")
+    _persist_worker_cli_snapshot(session_factory, snap)
 
     return {
         "settings": settings,

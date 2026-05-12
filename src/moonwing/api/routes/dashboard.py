@@ -23,6 +23,7 @@ from moonwing.services.ai_provider_probe import (
     PROVIDER_CLI_BINARIES,
     PROVIDER_DEFAULT_MODELS,
     PROVIDER_MODELS,
+    build_cli_agent_snapshot,
     discover_ai_cli_tools,
 )
 from moonwing.services.auth import create_session_token, create_service_token, hash_password, hash_service_token, verify_password
@@ -67,8 +68,14 @@ from moonwing.services.sensor_installer import (
     render_windows_installer,
 )
 from moonwing.services.run_activity import ACTIVE_RUN_STATUSES, serialize_run_activity
-from moonwing.services.system_updates import apply_system_update, build_git_update_status
+from moonwing.services.system_updates import (
+    apply_system_update,
+    build_git_update_status,
+    parse_admin_reboot_argv,
+    spawn_admin_host_reboot,
+)
 from moonwing.services.targets import normalize_target_metadata
+from moonwing.services.worker_cli_snapshot import load_cli_agent_snapshot
 from moonwing.services.run_schedule_service import (
     compute_next_run_utc,
     validate_cron_expression,
@@ -99,9 +106,11 @@ router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / 'templates')
 
 
-def _render(request: Request, template: str, context: dict | None = None):
+def _render(request: Request, template: str, context: dict | None = None, *, status_code: int | None = None):
     ctx = context or {}
     ctx.setdefault('current_user', getattr(request.state, 'current_user', None))
+    if status_code is not None:
+        return templates.TemplateResponse(request, template, ctx, status_code=status_code)
     return templates.TemplateResponse(request, template, ctx)
 
 
@@ -757,22 +766,36 @@ def sensor_delete(sensor_id: UUID, request: Request, db: Session = Depends(get_d
     return RedirectResponse(url='/sensors', status_code=303)
 
 
-def _system_updates_page_context(settings) -> dict[str, object]:
+def _system_updates_page_context(settings, db: Session | None = None) -> dict[str, object]:
     gs = build_git_update_status(settings)
+    worker_snap = load_cli_agent_snapshot(db) if db is not None else None
+    api_snap = build_cli_agent_snapshot(settings, process_label="moonwing-api") if db is not None else None
+    reboot_argv = parse_admin_reboot_argv(settings)
     return {
         'update_status': asdict(gs),
         'update_can_apply': gs.apply_available_reason is None and gs.is_git_repository,
+        'worker_cli_snapshot': worker_snap,
+        'api_cli_snapshot': api_snap,
+        'reboot_configured': bool(reboot_argv),
+        'reboot_argv_preview': json.dumps(reboot_argv) if reboot_argv else '',
     }
 
 
 @router.get('/system/updates', response_class=HTMLResponse)
-def system_updates_page(request: Request, applied: str | None = Query(None)):
+def system_updates_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    applied: str | None = Query(None),
+    reboot: str | None = Query(None),
+):
     _require(request, 'system_updates')
     settings = _get_settings()
-    ctx = _system_updates_page_context(settings)
+    ctx = _system_updates_page_context(settings, db)
     return _render(request, 'system_updates.html', {
         'active': 'system_updates',
         'update_applied_ok': applied == '1',
+        'reboot_initiated': reboot == '1',
+        'reboot_dispatch_failed': reboot == '0',
         **ctx,
     })
 
@@ -782,7 +805,7 @@ def system_updates_apply(request: Request, db: Session = Depends(get_db), confir
     _require(request, 'system_updates')
     settings = _get_settings()
     if confirm.strip() != 'APPLY':
-        ctx = _system_updates_page_context(settings)
+        ctx = _system_updates_page_context(settings, db)
         return _render(request, 'system_updates.html', {
             'active': 'system_updates',
             'apply_error': 'Type APPLY (all caps) in the confirmation box to run the upgrade.',
@@ -801,12 +824,64 @@ def system_updates_apply(request: Request, db: Session = Depends(get_db), confir
     db.commit()
     if outcome.success:
         return RedirectResponse(url='/system/updates?applied=1', status_code=303)
-    ctx = _system_updates_page_context(_get_settings())
+    ctx = _system_updates_page_context(_get_settings(), db)
     return _render(request, 'system_updates.html', {
         'active': 'system_updates',
         'last_apply': outcome.model_dump(),
         **ctx,
     })
+
+
+@router.post('/system/updates/reboot')
+def system_updates_reboot(request: Request, db: Session = Depends(get_db), confirm: str = Form('')):
+    _require(request, 'system_updates')
+    settings = _get_settings()
+    base_ctx = _system_updates_page_context(settings, db)
+    if request.state.current_user.get('role') != 'admin':
+        return _render(
+            request,
+            'system_updates.html',
+            {
+                'active': 'system_updates',
+                'reboot_error': 'Host reboot is limited to Moonwing admin users.',
+                **base_ctx,
+            },
+            status_code=403,
+        )
+    argv = parse_admin_reboot_argv(settings)
+    if not argv:
+        return _render(
+            request,
+            'system_updates.html',
+            {
+                'active': 'system_updates',
+                'reboot_error': 'Host reboot is not configured. Set MOONWING_ADMIN_REBOOT_ARGV_JSON on this host '
+                '(JSON array of argv, e.g. ["sudo","/sbin/shutdown","-r","now"]).',
+                **base_ctx,
+            },
+        )
+    if confirm.strip() != 'REBOOT':
+        return _render(
+            request,
+            'system_updates.html',
+            {
+                'active': 'system_updates',
+                'reboot_error': 'Type REBOOT (all caps) in the confirmation box to reboot this host.',
+                **base_ctx,
+            },
+        )
+    ok, msg = spawn_admin_host_reboot(argv)
+    audit(
+        db,
+        action='system_host_reboot',
+        resource_type='system',
+        actor_user_id=UUID(request.state.current_user['id']),
+        resource_id='host',
+        outcome='success' if ok else 'failure',
+        metadata={'argv': argv, 'message': msg},
+    )
+    db.commit()
+    return RedirectResponse(url=f'/system/updates?reboot={"1" if ok else "0"}', status_code=303)
 
 
 def _build_run_form_context(request: Request, db: Session, *, target: str = '', error: str = '') -> dict:

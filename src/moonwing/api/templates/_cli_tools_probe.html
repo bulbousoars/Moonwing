@@ -2,6 +2,9 @@
 <details class="detail-card" style="max-width:760px; margin-bottom:16px;">
   <summary style="cursor:pointer;font-weight:600;">Local AI CLI detection ({{ cli_tool_report.process_label }})</summary>
   <p style="margin:10px 0; font-size:0.9rem; color:var(--text-muted);">{{ cli_tool_report.note }}</p>
+  <p style="margin:0 0 10px 0; font-size:0.85rem; color:var(--text-muted);">
+    On startup, API and worker also <strong>execute</strong> each found binary with <code>--version</code>, then <code>-V</code>, then <code>--help</code> (short timeout, no TTY) and log the outcome — disable with <code>MOONWING_CLI_BOOT_SMOKE=false</code> if you need faster boot.
+  </p>
   <table class="data-table" style="width:100%; font-size:0.9rem;">
     <thead>
       <tr>

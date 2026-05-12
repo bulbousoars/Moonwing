@@ -22,6 +22,20 @@
 <div class="probe-result error">{{ apply_error }}</div>
 {% endif %}
 
+{% if reboot_error %}
+<div class="probe-result error">{{ reboot_error }}</div>
+{% endif %}
+
+{% if reboot_initiated %}
+<div class="probe-result" style="border-color: var(--ok);">
+  Reboot command was dispatched. This UI may stop responding while the host restarts.
+</div>
+{% endif %}
+
+{% if reboot_dispatch_failed %}
+<div class="probe-result error">Reboot could not be started — check server logs and <code>MOONWING_ADMIN_REBOOT_ARGV_JSON</code>.</div>
+{% endif %}
+
 {% if last_apply %}
 <div class="probe-result {% if not last_apply.success %}error{% endif %}">
   <strong>{{ last_apply.message }}</strong>
@@ -60,6 +74,16 @@
     <small>{{ st.github_remote_subject or '' }}</small>
   </div>
   {% endif %}
+  <div class="kpi-cell">
+    <span class="kpi-label">Worker CLI agents ready</span>
+    <strong>{% if worker_cli_snapshot %}{{ worker_cli_snapshot.ready_for_cli_scan_count }} / {{ worker_cli_snapshot.total_cli_slots }}{% else %}—{% endif %}</strong>
+    <small>Authoritative for CLI-mode scans</small>
+  </div>
+  <div class="kpi-cell">
+    <span class="kpi-label">API process CLI ready</span>
+    <strong>{% if api_cli_snapshot %}{{ api_cli_snapshot.ready_for_cli_scan_count }} / {{ api_cli_snapshot.total_cli_slots }}{% else %}—{% endif %}</strong>
+    <small>This Python process only</small>
+  </div>
 </div>
 
 <div class="detail-grid">
@@ -106,6 +130,53 @@
   </div>
 </div>
 
+<div class="detail-grid">
+  <div class="detail-card">
+    <h3>moonwing-worker (CLI scans)</h3>
+    <p class="text-muted" style="margin-top:0">This snapshot is what the worker wrote after its last boot probe — use it to predict CLI-mode scan success.</p>
+    {% if not worker_cli_snapshot %}
+    <p class="text-muted">No worker snapshot yet. Start <code>moonwing-worker</code> (after <code>alembic upgrade</code>) so it can persist diagnostics.</p>
+    {% else %}
+    <div class="detail-row"><span class="label">Ready / configured slots</span><span class="value"><strong>{{ worker_cli_snapshot.ready_for_cli_scan_count }}</strong> / {{ worker_cli_snapshot.total_cli_slots }}</span></div>
+    <div class="detail-row"><span class="label">Recorded</span><span class="value">{{ worker_cli_snapshot.persisted_at or worker_cli_snapshot.captured_at }}</span></div>
+    <table class="data-table" style="width:100%; font-size:0.9rem; margin-top:0.75rem;">
+      <thead><tr><th>Tool</th><th>Resolved</th><th>Exec smoke</th></tr></thead>
+      <tbody>
+      {% for t in worker_cli_snapshot.tools %}
+        <tr>
+          <td><strong>{{ t.id }}</strong></td>
+          <td>{% if t.resolved_path %}<code style="word-break:break-all;">{{ t.resolved_path }}</code>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{% if not t.available %}<span class="text-muted">missing</span>{% elif t.smoke_ok is sameas true %}<span style="color:var(--ok,#080);">ok</span>{% elif t.smoke_ok is sameas false %}<span class="badge badge-high">fail</span>{% else %}<span class="text-muted">n/a</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+  <div class="detail-card">
+    <h3>moonwing-api (this process)</h3>
+    <p class="text-muted" style="margin-top:0">Live probe in the API container/process — compare to the worker when debugging Docker PATH splits.</p>
+    {% if not api_cli_snapshot %}
+    <p class="text-muted">Snapshot unavailable.</p>
+    {% else %}
+    <div class="detail-row"><span class="label">Ready / slots</span><span class="value"><strong>{{ api_cli_snapshot.ready_for_cli_scan_count }}</strong> / {{ api_cli_snapshot.total_cli_slots }}</span></div>
+    <div class="detail-row"><span class="label">Captured</span><span class="value">{{ api_cli_snapshot.captured_at }}</span></div>
+    <table class="data-table" style="width:100%; font-size:0.9rem; margin-top:0.75rem;">
+      <thead><tr><th>Tool</th><th>Resolved</th><th>Exec smoke</th></tr></thead>
+      <tbody>
+      {% for t in api_cli_snapshot.tools %}
+        <tr>
+          <td><strong>{{ t.id }}</strong></td>
+          <td>{% if t.resolved_path %}<code style="word-break:break-all;">{{ t.resolved_path }}</code>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{% if not t.available %}<span class="text-muted">missing</span>{% elif t.smoke_ok is sameas true %}<span style="color:var(--ok,#080);">ok</span>{% elif t.smoke_ok is sameas false %}<span class="badge badge-high">fail</span>{% else %}<span class="text-muted">n/a</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+
 {% if update_can_apply %}
 <div class="table-card">
   <div class="table-card-header">
@@ -117,6 +188,23 @@
       <label for="upd-confirm" class="muted" style="display:block;margin-bottom:0.35rem"><strong>Type APPLY to confirm:</strong></label>
       <input id="upd-confirm" type="text" name="confirm" autocomplete="off" spellcheck="false" style="min-width:12rem;margin-right:0.5rem;font-family:inherit" />
       <button type="submit" class="btn btn-primary">Implement update</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if reboot_configured %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>Host reboot</h2>
+    <span class="text-muted">Runs the configured argv on <strong>this host</strong> as the Moonwing API process user. Empty/disabled in most Docker-only installs.</span>
+  </div>
+  <div style="padding:1rem 1.25rem">
+    <p class="text-muted" style="margin-top:0">Command: <code>{{ reboot_argv_preview }}</code></p>
+    <form method="post" action="/system/updates/reboot" onsubmit="return confirm('Reboot THIS host now? You will lose the connection to Moonwing.');">
+      <label for="reboot-confirm" class="muted" style="display:block;margin-bottom:0.35rem"><strong>Type REBOOT to confirm:</strong></label>
+      <input id="reboot-confirm" type="text" name="confirm" autocomplete="off" spellcheck="false" style="min-width:12rem;margin-right:0.5rem;font-family:inherit" />
+      <button type="submit" class="btn">Reboot host</button>
     </form>
   </div>
 </div>

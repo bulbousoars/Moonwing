@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
+import subprocess
 from typing import Any
 
 import httpx
@@ -150,6 +152,127 @@ def discover_ai_cli_tools(
         "note": CLI_PROBE_WORKER_NOTE,
         "tools": tools,
     }
+
+
+def _smoke_cli_once(invoke: str, timeout: float) -> dict[str, Any]:
+    """Run a trivial non-interactive argv; stdin closed so shells never wait for TTY."""
+    arg_chains = (("--version",), ("-V",), ("--help",))
+    last: dict[str, Any] = {}
+    for extra in arg_chains:
+        try:
+            proc = subprocess.run(
+                [invoke, *extra],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                stdin=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            return {"smoke_ok": False, "smoke_tried": extra, "smoke_error": "not_found"}
+        except subprocess.TimeoutExpired:
+            return {"smoke_ok": False, "smoke_tried": extra, "smoke_error": "timeout"}
+        except OSError as exc:
+            return {"smoke_ok": False, "smoke_tried": extra, "smoke_error": str(exc)[:200]}
+
+        out = (proc.stdout or "").strip() or (proc.stderr or "").strip()
+        head = out.splitlines()[0][:160] if out else ""
+        last = {
+            "smoke_ok": proc.returncode == 0,
+            "smoke_tried": extra,
+            "smoke_returncode": proc.returncode,
+            "smoke_line": head,
+        }
+        if proc.returncode == 0:
+            return last
+    return last or {"smoke_ok": False, "smoke_tried": None, "smoke_error": "nonzero_exit"}
+
+
+def enrich_tools_with_boot_smoke(
+    tools: list[dict[str, Any]],
+    *,
+    timeout: float,
+) -> None:
+    """Mutate tool dicts with ``smoke_*`` keys where a binary exists on disk / PATH."""
+    for t in tools:
+        if not t.get("available"):
+            t["smoke_skipped"] = True
+            t["smoke_ok"] = None
+            continue
+        invoke = t.get("resolved_path") or t.get("configured_value") or t["id"]
+        result = _smoke_cli_once(str(invoke), timeout=timeout)
+        t["smoke_skipped"] = False
+        t["smoke_ok"] = result.get("smoke_ok")
+        tried = result.get("smoke_tried")
+        t["smoke_tried"] = list(tried) if isinstance(tried, tuple) else tried
+        if "smoke_returncode" in result:
+            t["smoke_returncode"] = result["smoke_returncode"]
+        if result.get("smoke_line"):
+            t["smoke_line"] = result["smoke_line"]
+        if result.get("smoke_error"):
+            t["smoke_error"] = result["smoke_error"]
+
+
+def _tool_boot_status_token(tool: dict[str, Any]) -> str:
+    tid = str(tool.get("id", "?"))
+    if not tool.get("available"):
+        return f"{tid}:missing"
+    if tool.get("smoke_skipped"):
+        return f"{tid}:path"
+    if tool.get("smoke_ok") is True:
+        return f"{tid}:exec_ok"
+    err = str(tool.get("smoke_error") or tool.get("smoke_line") or "smoke_failed")[:48]
+    return f"{tid}:exec_fail({err})"
+
+
+def build_cli_agent_snapshot(settings: Settings | None = None, *, process_label: str) -> dict[str, Any]:
+    """Full PATH + optional smoke probe for dashboards and DB persistence (JSON-safe)."""
+    from datetime import datetime, timezone
+
+    settings = settings or Settings()
+    probe = discover_ai_cli_tools(settings, process_label=process_label)
+    if settings.cli_boot_smoke:
+        enrich_tools_with_boot_smoke(
+            probe["tools"],
+            timeout=float(settings.cli_boot_smoke_timeout_seconds),
+        )
+    else:
+        for t in probe["tools"]:
+            t["smoke_skipped"] = True
+            t["smoke_ok"] = None
+    for t in probe["tools"]:
+        st = t.get("smoke_tried")
+        if isinstance(st, tuple):
+            t["smoke_tried"] = list(st)
+    if settings.cli_boot_smoke:
+        ready = sum(1 for t in probe["tools"] if t.get("available") and t.get("smoke_ok") is True)
+    else:
+        ready = sum(1 for t in probe["tools"] if t.get("available"))
+    probe["ready_for_cli_scan_count"] = ready
+    probe["path_only_count"] = sum(1 for t in probe["tools"] if t.get("available"))
+    probe["total_cli_slots"] = len(probe["tools"])
+    probe["captured_at"] = datetime.now(timezone.utc).isoformat()
+    return probe
+
+
+def log_ai_cli_boot_diagnostics(
+    logger: logging.Logger,
+    settings: Settings,
+    *,
+    process_label: str,
+) -> dict[str, Any]:
+    """PATH/executable check plus optional subprocess smoke; one INFO line per boot."""
+    snap = build_cli_agent_snapshot(settings, process_label=process_label)
+    parts = [_tool_boot_status_token(t) for t in snap["tools"]]
+    if settings.cli_boot_smoke:
+        logger.info(
+            "AI CLI boot diagnostics (%s, smoke=%.1fs): %s",
+            process_label,
+            float(settings.cli_boot_smoke_timeout_seconds),
+            ", ".join(parts),
+        )
+    else:
+        logger.info("AI CLI boot diagnostics (%s, smoke=off): %s", process_label, ", ".join(parts))
+    return snap
 
 
 class ProviderProbeError(ValueError):

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     claude_cli_binary: str = 'claude'
     codex_cli_binary: str = 'codex'
     gemini_cli_binary: str = 'gemini'
+    # At API/worker startup, optionally spawn each found CLI with --version / -V / --help
+    # (short timeout, non-interactive) to confirm the binary actually runs.
+    cli_boot_smoke: bool = True
+    cli_boot_smoke_timeout_seconds: float = 4.0
     workspace_dir: str = '/var/lib/moonwing/workspace/runs'
     session_secret: str = 'moonwing-dev-session-secret-change-me'
     bootstrap_admin_email: str = 'admin'
@@ -47,3 +51,6 @@ class Settings(BaseSettings):
     update_systemd_units: str = ''
     update_pip_timeout_seconds: int = 600
     update_alembic_timeout_seconds: int = 300
+    # JSON argv for host reboot from Updates (empty = hidden). Example:
+    # '["sudo","/sbin/shutdown","-r","now"]'
+    admin_reboot_argv_json: str = ''

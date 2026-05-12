@@ -1,5 +1,6 @@
 from pathlib import Path
 from uuid import UUID
+import logging
 
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -13,6 +14,7 @@ from moonwing.api.routes.runs import router as runs_router
 from moonwing.api.routes.sensors import router as sensor_router
 from moonwing.api.routes.system_updates_api import router as system_updates_router
 from moonwing.db.models import User
+from moonwing.services.ai_provider_probe import log_ai_cli_boot_diagnostics
 from moonwing.services.auth import parse_session_token
 from moonwing.services.iam import authenticate_service_token, bootstrap_admin
 from moonwing.services.permissions import permission_for_request, require_role
@@ -46,6 +48,11 @@ def _startup() -> None:
         from moonwing.services.logging_json import configure_json_stdout_logging
 
         configure_json_stdout_logging()
+    _ = log_ai_cli_boot_diagnostics(
+        logging.getLogger("moonwing.api"),
+        settings,
+        process_label="moonwing-api",
+    )
     session = _get_session_factory()()
     try:
         bootstrap_admin(session, _get_settings())

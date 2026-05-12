@@ -1,3 +1,6 @@
+import logging
+import subprocess
+
 from moonwing.services.ai_provider_probe import (
     PROVIDER_DEFAULT_MODELS,
     ProviderProbeError,
@@ -74,3 +77,52 @@ def test_discover_ai_cli_tools_shape(monkeypatch):
     assert len(r["tools"]) == 3
     assert all(not t["available"] for t in r["tools"])
     assert r["tools"][0]["id"] == "claude"
+
+
+def test_enrich_tools_with_boot_smoke_marks_exec_ok(monkeypatch):
+    from moonwing.services import ai_provider_probe as mod
+
+    tools = [
+        {
+            "id": "claude",
+            "available": True,
+            "resolved_path": "/bin/claude",
+            "configured_value": "claude",
+        }
+    ]
+
+    def fake_run(cmd, **_kwargs):
+        assert cmd[:2] == ["/bin/claude", "--version"]
+        return subprocess.CompletedProcess(cmd, 0, stdout="Claude 9.9.9\n", stderr="")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    mod.enrich_tools_with_boot_smoke(tools, timeout=2.0)
+    assert tools[0]["smoke_ok"] is True
+    assert "9.9.9" in (tools[0].get("smoke_line") or "")
+
+
+def test_log_ai_cli_boot_diagnostics_respects_smoke_off(monkeypatch, caplog):
+    from moonwing.config import Settings
+    from moonwing.services import ai_provider_probe as mod
+
+    monkeypatch.setattr(mod.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(mod.os.path, "isfile", lambda _p: False)
+
+    settings = Settings(cli_boot_smoke=False)
+    caplog.set_level(logging.INFO)
+    mod.log_ai_cli_boot_diagnostics(logging.getLogger("test"), settings, process_label="unit")
+    assert "smoke=off" in caplog.text
+    assert "claude:missing" in caplog.text
+
+
+def test_build_cli_agent_snapshot_has_counts(monkeypatch):
+    from moonwing.config import Settings
+    from moonwing.services import ai_provider_probe as mod
+
+    monkeypatch.setattr(mod.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(mod.os.path, "isfile", lambda _p: False)
+
+    snap = mod.build_cli_agent_snapshot(Settings(cli_boot_smoke=False), process_label="x")
+    assert snap["ready_for_cli_scan_count"] == 0
+    assert snap["total_cli_slots"] == 3
+    assert "captured_at" in snap

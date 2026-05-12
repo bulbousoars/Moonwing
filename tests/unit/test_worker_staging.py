@@ -583,6 +583,7 @@ class TestWorkerBootstrap:
             "moonwing.worker.main.MinioObjectStore",
             lambda **kw: mock_store,
         )
+        monkeypatch.setattr("moonwing.worker.main._persist_worker_cli_snapshot", lambda *_a, **_k: None)
 
         # Use SQLite to avoid requiring psycopg in unit tests
         settings = Settings(database_url="sqlite:///:memory:")

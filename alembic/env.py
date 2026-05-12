@@ -5,7 +5,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from moonwing.db.base import Base
-from moonwing.db.models import artifact, audit_event, credential, finding, privileged_access_grant, run, run_schedule, runtime_profile, sensor, service_account_token, target, user  # noqa: F401
+from moonwing.db.models import artifact, audit_event, credential, finding, privileged_access_grant, run, run_schedule, runtime_profile, sensor, service_account_token, target, user, worker_diagnostic  # noqa: F401
 
 config = context.config
 
