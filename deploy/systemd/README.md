@@ -81,7 +81,9 @@ cd D:\Projects\Moonwing   # or any clone with this commit
 | `moonwing-auto-upgrade.service` | One-shot: runs **`moonwing-upgrade.sh`** |
 | `scripts/moonwing-upgrade.sh` | Fetch / **`git pull --ff-only`**, Compose rebuild, **`curl` health** |
 
-Refuses a **dirty** git working tree (same as manual upgrade). For hosts with a deliberate local diff (e.g. pinned `docker-compose.yml` port), either stash, use a branch, or set **`MOONWING_SKIP_GIT=1`** in the service environment and rely on another mechanism to sync sources.
+Refuses a **dirty** git working tree (same as manual upgrade). For hosts with a deliberate local diff (e.g. pinned `docker-compose.yml` port), either stash, use a branch, **`git update-index --skip-worktree`** on that file (common when only the MinIO published port differs), or set **`MOONWING_SKIP_GIT=1`** in the service environment and rely on another mechanism to sync sources.
+
+**Compose `docker-compose.override.yml`:** Docker merges override `ports` with the base file, so duplicating `minio` ports there can still leave the original host binding (e.g. `9001`) and break `docker compose up`. Prefer **`skip-worktree`** on a single-line edit in `docker-compose.yml`, or resolve the host port conflict globally.
 
 ## Sudo-only deploy (agents)
 
