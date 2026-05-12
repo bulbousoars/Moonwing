@@ -1054,10 +1054,64 @@ def _schedule_form_context(db: Session) -> dict:
     }
 
 
-def _render_schedule_form(request: Request, db: Session, *, error: str, status_code: int = 200):
+def _schedule_to_form_dict(sch: RunSchedule) -> dict:
+    """Serialize a RunSchedule for the shared create/edit form template."""
+    return {
+        'id': str(sch.id),
+        'name': sch.name,
+        'cron_expression': sch.cron_expression,
+        'timezone': sch.timezone,
+        'target_id': str(sch.target_id) if sch.target_id else '',
+        'user_id': str(sch.user_id),
+        'credential_id': str(sch.credential_id),
+        'runtime_profile_id': str(sch.runtime_profile_id),
+        'job_family': sch.job_family,
+        'provider': sch.provider,
+        'model': sch.model,
+        'execution_mode': sch.execution_mode or 'api',
+        'ai_instruction': sch.ai_instruction or '',
+    }
+
+
+def _validate_schedule_form_fields(
+    db: Session,
+    *,
+    target_id: str,
+    execution_mode: str,
+    credential_id: str,
+    provider: str,
+    cron_expression: str,
+    timezone: str,
+) -> tuple[str | None, str | None, str | None]:
+    """Return ``(error, cron, tz)`` — ``cron`` and ``tz`` only when ``error`` is ``None``."""
+    if not target_id.strip():
+        return 'Target is required for scheduled scans.', None, None
+    if execution_mode == 'api':
+        cred = db.query(Credential).filter(Credential.id == UUID(credential_id)).first()
+        if cred is None:
+            return 'Selected credential not found.', None, None
+        if cred.provider != provider and provider != 'ollama':
+            return f"Credential is for {cred.provider}, but provider is {provider}.", None, None
+    try:
+        cron = validate_cron_expression(cron_expression)
+        tz = validate_timezone(timezone)
+    except ValueError as exc:
+        return str(exc), None, None
+    return None, cron, tz
+
+
+def _render_schedule_form(
+    request: Request,
+    db: Session,
+    *,
+    error: str,
+    status_code: int = 200,
+    schedule: dict | None = None,
+):
     ctx = _schedule_form_context(db)
     ctx['active'] = 'schedules'
     ctx['error'] = error
+    ctx['schedule'] = schedule
     ctx.setdefault('current_user', getattr(request.state, 'current_user', None))
     return templates.TemplateResponse(request, 'schedule_form.html', ctx, status_code=status_code)
 
@@ -1090,6 +1144,100 @@ def schedules_new_page(request: Request, db: Session = Depends(get_db)):
     return _render_schedule_form(request, db, error='')
 
 
+@router.get('/schedules/{schedule_id}/edit', response_class=HTMLResponse)
+def schedules_edit_page(schedule_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'launch_scan')
+    sch = db.get(RunSchedule, schedule_id)
+    if not sch:
+        raise HTTPException(status_code=404, detail='Schedule not found')
+    return _render_schedule_form(request, db, error='', schedule=_schedule_to_form_dict(sch))
+
+
+@router.post('/schedules/{schedule_id}/edit')
+def schedules_edit(
+    schedule_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+    cron_expression: str = Form(...),
+    timezone: str = Form(...),
+    job_family: str = Form(...),
+    target_id: str = Form(''),
+    user_id: str = Form(...),
+    credential_id: str = Form(...),
+    runtime_profile_id: str = Form(...),
+    provider: str = Form(...),
+    model: str = Form(...),
+    execution_mode: str = Form('api'),
+    ai_instruction: str = Form(''),
+):
+    _require(request, 'launch_scan')
+    sch = db.get(RunSchedule, schedule_id)
+    if not sch:
+        raise HTTPException(status_code=404, detail='Schedule not found')
+
+    posted = {
+        'id': str(schedule_id),
+        'name': name.strip(),
+        'cron_expression': cron_expression.strip(),
+        'timezone': timezone.strip(),
+        'target_id': target_id.strip(),
+        'user_id': user_id.strip(),
+        'credential_id': credential_id.strip(),
+        'runtime_profile_id': runtime_profile_id.strip(),
+        'job_family': job_family.strip(),
+        'provider': provider.strip(),
+        'model': model.strip(),
+        'execution_mode': execution_mode.strip() or 'api',
+        'ai_instruction': ai_instruction,
+    }
+
+    err, cron, tz = _validate_schedule_form_fields(
+        db,
+        target_id=target_id,
+        execution_mode=execution_mode,
+        credential_id=credential_id,
+        provider=provider,
+        cron_expression=cron_expression,
+        timezone=timezone,
+    )
+    if err:
+        return _render_schedule_form(request, db, error=err, status_code=400, schedule=posted)
+
+    assert cron is not None and tz is not None
+    now = datetime.now(timezone.utc)
+    next_at = compute_next_run_utc(cron_expression=cron, timezone_name=tz, anchor_utc=now)
+    instr = None
+    if ai_instruction and ai_instruction.strip():
+        instr = ai_instruction.strip()[:DEFAULT_AI_INSTRUCTION_MAX_CHARS]
+
+    sch.name = name.strip()[:255]
+    sch.cron_expression = cron
+    sch.timezone = tz
+    sch.user_id = UUID(user_id)
+    sch.credential_id = UUID(credential_id)
+    sch.runtime_profile_id = UUID(runtime_profile_id)
+    sch.target_id = UUID(target_id.strip())
+    sch.job_family = job_family
+    sch.provider = provider
+    sch.model = model.strip()[:128]
+    sch.execution_mode = execution_mode
+    sch.ai_instruction = instr
+    sch.next_run_at = next_at
+    sch.updated_at = datetime.now(timezone.utc)
+
+    audit(
+        db,
+        action='schedule_update',
+        resource_type='run_schedule',
+        actor_user_id=UUID(request.state.current_user['id']),
+        resource_id=str(sch.id),
+        metadata={'name': sch.name, 'cron': cron},
+    )
+    db.commit()
+    return RedirectResponse(url='/schedules', status_code=303)
+
+
 @router.post('/schedules/new')
 def schedules_create(
     request: Request,
@@ -1108,24 +1256,18 @@ def schedules_create(
     ai_instruction: str = Form(''),
 ):
     _require(request, 'launch_scan')
-    if not target_id.strip():
-        return _render_schedule_form(request, db, error='Target is required for scheduled scans.', status_code=400)
-    if execution_mode == 'api':
-        cred = db.query(Credential).filter(Credential.id == UUID(credential_id)).first()
-        if cred is None:
-            return _render_schedule_form(request, db, error='Selected credential not found.', status_code=400)
-        if cred.provider != provider and provider != 'ollama':
-            return _render_schedule_form(
-                request,
-                db,
-                error=f"Credential is for {cred.provider}, but provider is {provider}.",
-                status_code=400,
-            )
-    try:
-        cron = validate_cron_expression(cron_expression)
-        tz = validate_timezone(timezone)
-    except ValueError as exc:
-        return _render_schedule_form(request, db, error=str(exc), status_code=400)
+    err, cron, tz = _validate_schedule_form_fields(
+        db,
+        target_id=target_id,
+        execution_mode=execution_mode,
+        credential_id=credential_id,
+        provider=provider,
+        cron_expression=cron_expression,
+        timezone=timezone,
+    )
+    if err:
+        return _render_schedule_form(request, db, error=err, status_code=400)
+    assert cron is not None and tz is not None
 
     now = datetime.now(timezone.utc)
     next_at = compute_next_run_utc(cron_expression=cron, timezone_name=tz, anchor_utc=now)

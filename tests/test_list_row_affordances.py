@@ -73,3 +73,39 @@ def test_target_scan_action_is_separated_from_edit_delete_actions():
     assert template.index('href="/runs/new?target={{ target.id }}"') < template.index('class="page-actions-secondary"')
     assert ".page-actions-split" in css
     assert ".page-actions-secondary" in css
+
+
+def test_schedules_list_includes_edit_affordance_and_table_shell():
+    template = (ROOT / "src/moonwing/api/templates/schedules_list.html").read_text(encoding="utf-8")
+    route = (ROOT / "src/moonwing/api/routes/dashboard.py").read_text(encoding="utf-8")
+    css = (ROOT / "src/moonwing/api/static/css/style.css").read_text(encoding="utf-8")
+
+    assert "schedules-table-card" in template
+    assert 'href="/schedules/{{ s.id }}/edit"' in template
+    assert 'class="list-row-affordance-heading"' in template
+    assert 'class="list-row-affordance"' in template
+    assert 'class="list-row-open"' in template
+    assert "@router.get('/schedules/{schedule_id}/edit'" in route
+    assert "@router.post('/schedules/{schedule_id}/edit'" in route
+    assert ".schedules-table-card" in css
+
+
+def test_schedule_form_supports_create_and_edit_actions():
+    template = (ROOT / "src/moonwing/api/templates/schedule_form.html").read_text(encoding="utf-8")
+
+    assert "/schedules/new" in template
+    assert "/schedules/{{ schedule.id }}/edit" in template
+    assert "{% if schedule %}Save changes{% else %}Create schedule{% endif %}" in template
+
+
+def test_users_rows_include_right_edge_detail_affordance():
+    template = (ROOT / "src/moonwing/api/templates/users.html").read_text(encoding="utf-8")
+    css = (ROOT / "src/moonwing/api/static/css/style.css").read_text(encoding="utf-8")
+
+    assert "users-table-card" in template
+    assert 'class="list-row-affordance-heading"' in template
+    assert 'class="list-row-affordance"' in template
+    assert 'class="list-row-open"' in template
+    assert 'href="/users/{{ u.id }}"' in template
+    assert 'aria-label="Open user details for {{ u.display_name }}"' in template
+    assert ".users-table-card" in css

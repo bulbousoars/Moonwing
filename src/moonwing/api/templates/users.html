@@ -7,7 +7,7 @@
 </div>
 
 {% if users %}
-<div class="table-card">
+<div class="table-card users-table-card">
   <div class="table-card-header">
     <h2>{{ users|length }} user{{ 's' if users|length != 1 }}</h2>
     <a href="/users/new" class="btn btn-primary">+ New User</a>
@@ -22,6 +22,7 @@
         <th>Source</th>
         <th>Status</th>
         <th>Created</th>
+        <th class="list-row-affordance-heading" aria-label="Open profile"></th>
       </tr>
     </thead>
     <tbody>
@@ -34,6 +35,9 @@
         <td><span class="badge badge-low">{{ u.source_label }}</span><br><small class="muted">{{ u.role_source_label }}</small></td>
         <td>{{ u.status }}</td>
         <td>{{ u.created_at[:19] if u.created_at else '-' }}</td>
+        <td class="list-row-affordance">
+          <a class="list-row-open" href="/users/{{ u.id }}" aria-label="Open user details for {{ u.display_name }}" title="Open details"></a>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

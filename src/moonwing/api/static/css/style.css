@@ -1193,12 +1193,16 @@ table {
 }
 
 .runs-table-card,
-.artifacts-table-card {
+.artifacts-table-card,
+.schedules-table-card,
+.users-table-card {
   overflow-x: auto;
 }
 
 .runs-table-card table,
-.artifacts-table-card table {
+.artifacts-table-card table,
+.schedules-table-card table,
+.users-table-card table {
   table-layout: fixed;
 }
 
@@ -1216,6 +1220,61 @@ table {
 .runs-table-card td:nth-child(6) { width: 14%; }
 .runs-table-card th:nth-child(7),
 .runs-table-card td:nth-child(7) { width: 4%; }
+
+.schedules-table-card th:nth-child(1),
+.schedules-table-card td:nth-child(1) { width: 26%; }
+.schedules-table-card th:nth-child(2),
+.schedules-table-card td:nth-child(2) { width: 14%; }
+.schedules-table-card th:nth-child(3),
+.schedules-table-card td:nth-child(3) { width: 10%; }
+.schedules-table-card th:nth-child(4),
+.schedules-table-card td:nth-child(4) { width: 18%; }
+.schedules-table-card th:nth-child(5),
+.schedules-table-card td:nth-child(5) { width: 10%; }
+.schedules-table-card th:nth-child(6),
+.schedules-table-card td:nth-child(6) { width: 14%; }
+.schedules-table-card th:nth-child(7),
+.schedules-table-card td:nth-child(7) { width: 4%; }
+
+.users-table-card th:nth-child(1),
+.users-table-card td:nth-child(1) { width: 22%; }
+.users-table-card th:nth-child(2),
+.users-table-card td:nth-child(2) { width: 14%; }
+.users-table-card th:nth-child(3),
+.users-table-card td:nth-child(3) { width: 16%; }
+.users-table-card th:nth-child(4),
+.users-table-card td:nth-child(4) { width: 10%; }
+.users-table-card th:nth-child(5),
+.users-table-card td:nth-child(5) { width: 14%; }
+.users-table-card th:nth-child(6),
+.users-table-card td:nth-child(6) { width: 8%; }
+.users-table-card th:nth-child(7),
+.users-table-card td:nth-child(7) { width: 10%; }
+.users-table-card th:nth-child(8),
+.users-table-card td:nth-child(8) { width: 4%; }
+
+.schedule-actions-cell {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.schedule-inline-form {
+  display: inline-block;
+  margin-right: 0.35rem;
+}
+
+.schedule-inline-form:last-child {
+  margin-right: 0;
+}
+
+.schedule-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.schedule-name-link:hover strong {
+  color: var(--accent-hover);
+}
 
 .artifacts-table-card th:nth-child(1),
 .artifacts-table-card td:nth-child(1) { width: 26%; }

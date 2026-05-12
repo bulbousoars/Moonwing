@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}New run schedule - Moonwing{% endblock %}
+{% block title %}{% if schedule %}Edit run schedule{% else %}New run schedule{% endif %} - Moonwing{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>New run schedule</h1>
+  <h1>{% if schedule %}Edit run schedule{% else %}New run schedule{% endif %}</h1>
   <p><a href="/schedules">← Back to schedules</a></p>
 </div>
 
@@ -13,33 +13,33 @@
 {% include "_cli_tools_probe.html" %}
 
 <div class="detail-card" style="max-width:760px">
-  <form method="post" action="/schedules/new">
+  <form method="post" action="{% if schedule %}/schedules/{{ schedule.id }}/edit{% else %}/schedules/new{% endif %}">
     <div class="form-group">
       <label for="name">Name</label>
-      <input type="text" id="name" name="name" required maxlength="255" placeholder="e.g. Weekly perimeter scan">
+      <input type="text" id="name" name="name" required maxlength="255" placeholder="e.g. Weekly perimeter scan" value="{{ schedule.name if schedule else '' }}">
     </div>
     <div class="form-group">
       <label for="cron_expression">Cron (5 fields)</label>
-      <input type="text" id="cron_expression" name="cron_expression" required maxlength="128" placeholder="15 4 * * *" value="0 4 * * *">
+      <input type="text" id="cron_expression" name="cron_expression" required maxlength="128" placeholder="15 4 * * *" value="{{ schedule.cron_expression if schedule else '0 4 * * *' }}">
       <small style="color:var(--text-muted)">minute hour day-of-month month day-of-week — evaluated in the timezone below (same style as Vixie cron).</small>
     </div>
     <div class="form-group">
       <label for="timezone">Timezone</label>
-      <input type="text" id="timezone" name="timezone" required maxlength="64" value="UTC" placeholder="America/New_York">
+      <input type="text" id="timezone" name="timezone" required maxlength="64" value="{{ schedule.timezone if schedule else 'UTC' }}" placeholder="America/New_York">
     </div>
     <div class="form-group">
       <label for="job_family">Job family</label>
       <select id="job_family" name="job_family" required>
-        <option value="network_scan">Network scan</option>
-        <option value="source_hunt">Source hunt</option>
+        <option value="network_scan" {% if not schedule or schedule.job_family == 'network_scan' %}selected{% endif %}>Network scan</option>
+        <option value="source_hunt" {% if schedule and schedule.job_family == 'source_hunt' %}selected{% endif %}>Source hunt</option>
       </select>
     </div>
     <div class="form-group">
       <label for="target_id">Target</label>
       <select id="target_id" name="target_id">
-        <option value="">(none)</option>
+        <option value="" {% if not schedule or not schedule.target_id %}selected{% endif %}>(none)</option>
         {% for t in targets %}
-        <option value="{{ t.id }}">{{ t.display_name }} ({{ t.target_type }})</option>
+        <option value="{{ t.id }}" {% if schedule and schedule.target_id == t.id %}selected{% endif %}>{{ t.display_name }} ({{ t.target_type }})</option>
         {% endfor %}
       </select>
     </div>
@@ -47,7 +47,7 @@
       <label for="user_id">Run as</label>
       <select id="user_id" name="user_id" required>
         {% for u in users %}
-        <option value="{{ u.id }}">{{ u.display_name }} ({{ u.email }})</option>
+        <option value="{{ u.id }}" {% if schedule and schedule.user_id == u.id %}selected{% endif %}>{{ u.display_name }} ({{ u.email }})</option>
         {% endfor %}
       </select>
     </div>
@@ -55,7 +55,7 @@
       <label for="credential_id">Credential</label>
       <select id="credential_id" name="credential_id" required>
         {% for c in credentials %}
-        <option value="{{ c.id }}">{{ c.display_name }} — {{ c.provider }}</option>
+        <option value="{{ c.id }}" {% if schedule and schedule.credential_id == c.id %}selected{% endif %}>{{ c.display_name }} — {{ c.provider }}</option>
         {% endfor %}
       </select>
     </div>
@@ -63,37 +63,37 @@
       <label for="runtime_profile_id">Runtime profile</label>
       <select id="runtime_profile_id" name="runtime_profile_id" required>
         {% for p in profiles %}
-        <option value="{{ p.id }}">{{ p.name }}</option>
+        <option value="{{ p.id }}" {% if schedule and schedule.runtime_profile_id == p.id %}selected{% endif %}>{{ p.name }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="form-group">
       <label for="provider">Provider</label>
       <select id="provider" name="provider" required>
-        <option value="anthropic">Anthropic</option>
-        <option value="openai">OpenAI</option>
-        <option value="google">Google</option>
-        <option value="openrouter">OpenRouter</option>
-        <option value="ollama">Ollama</option>
+        <option value="anthropic" {% if not schedule or schedule.provider == 'anthropic' %}selected{% endif %}>Anthropic</option>
+        <option value="openai" {% if schedule and schedule.provider == 'openai' %}selected{% endif %}>OpenAI</option>
+        <option value="google" {% if schedule and schedule.provider == 'google' %}selected{% endif %}>Google</option>
+        <option value="openrouter" {% if schedule and schedule.provider == 'openrouter' %}selected{% endif %}>OpenRouter</option>
+        <option value="ollama" {% if schedule and schedule.provider == 'ollama' %}selected{% endif %}>Ollama</option>
       </select>
     </div>
     <div class="form-group">
       <label for="model">Model</label>
-      <input type="text" id="model" name="model" required maxlength="128" placeholder="claude-sonnet-4-6">
+      <input type="text" id="model" name="model" required maxlength="128" placeholder="claude-sonnet-4-6" value="{{ schedule.model if schedule else '' }}">
     </div>
     <div class="form-group">
       <label for="execution_mode">Execution mode</label>
       <select id="execution_mode" name="execution_mode">
-        <option value="api">API</option>
-        <option value="cli">CLI</option>
+        <option value="api" {% if not schedule or schedule.execution_mode == 'api' %}selected{% endif %}>API</option>
+        <option value="cli" {% if schedule and schedule.execution_mode == 'cli' %}selected{% endif %}>CLI</option>
       </select>
       <small style="color:var(--text-muted)">Use <strong>API</strong> unless the worker has claude/codex/gemini installed (default Docker image does not).</small>
     </div>
     <div class="form-group">
       <label for="ai_instruction">Instructions for the AI (optional)</label>
-      <textarea id="ai_instruction" name="ai_instruction" rows="3" maxlength="16000"></textarea>
+      <textarea id="ai_instruction" name="ai_instruction" rows="3" maxlength="16000">{{ schedule.ai_instruction if schedule else '' }}</textarea>
     </div>
-    <button type="submit" class="btn btn-primary">Create schedule</button>
+    <button type="submit" class="btn btn-primary">{% if schedule %}Save changes{% else %}Create schedule{% endif %}</button>
   </form>
 </div>
 {% endblock %}
