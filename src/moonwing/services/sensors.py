@@ -31,7 +31,7 @@ class SensorHeartbeatResult:
 DEFAULT_POLICIES: dict[str, dict] = {
     "linux": {
         "platform": "linux",
-        "collectors": ["host", "packages", "processes", "listening_ports", "auth_logs", "docker"],
+        "collectors": ["host", "packages", "npm_packages", "processes", "listening_ports", "auth_logs", "docker"],
         "inventory_interval_seconds": 3600,
         "heartbeat_interval_seconds": 60,
         "fim": [
@@ -42,7 +42,7 @@ DEFAULT_POLICIES: dict[str, dict] = {
     },
     "windows": {
         "platform": "windows",
-        "collectors": ["host", "installed_apps", "services", "processes", "listening_ports", "windows_event_logs"],
+        "collectors": ["host", "installed_apps", "npm_packages", "services", "processes", "listening_ports", "windows_event_logs"],
         "inventory_interval_seconds": 3600,
         "heartbeat_interval_seconds": 60,
         "fim": [
@@ -53,7 +53,7 @@ DEFAULT_POLICIES: dict[str, dict] = {
     },
     "macos": {
         "platform": "macos",
-        "collectors": ["host", "installed_apps", "homebrew", "launch_items", "processes", "listening_ports", "unified_logs"],
+        "collectors": ["host", "installed_apps", "npm_packages", "homebrew", "launch_items", "processes", "listening_ports", "unified_logs"],
         "inventory_interval_seconds": 3600,
         "heartbeat_interval_seconds": 60,
         "fim": [

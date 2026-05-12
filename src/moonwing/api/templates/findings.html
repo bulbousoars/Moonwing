@@ -3,9 +3,15 @@
 {% block content %}
 <div class="page-header">
   <h1>Findings</h1>
-  <p>All security findings across runs</p>
+  <p>Security findings across runs and NPM inventory from enrolled endpoint environments</p>
 </div>
 
+<div class="settings-tabs" role="tablist" aria-label="Findings views">
+  <button type="button" class="settings-tab active" role="tab" aria-selected="true" id="tab-findings" onclick="showFindingsTab('findings')">Findings</button>
+  <button type="button" class="settings-tab" role="tab" aria-selected="false" id="tab-npm" onclick="showFindingsTab('npm')">NPM packages</button>
+</div>
+
+<div id="panel-findings" class="settings-panel" role="tabpanel" aria-labelledby="tab-findings">
 {% if findings %}
 <section class="findings-console" aria-label="Finding filters and table">
   <div class="findings-control-grid">
@@ -88,6 +94,7 @@
 <script>
 (function () {
   var table = document.getElementById('findings-table');
+  if (!table) return;
   var searchFilter = document.getElementById('filter-search');
   var severityFilter = document.getElementById('filter-severity');
   var productFilter = document.getElementById('filter-product');
@@ -174,4 +181,108 @@
   <p>Findings appear here after runs complete normalization.</p>
 </div>
 {% endif %}
+</div>
+
+<div id="panel-npm" class="settings-panel" style="display:none" role="tabpanel" aria-labelledby="tab-npm">
+{% if npm_inventory_rows %}
+<div class="table-card table-card-command findings-table-card">
+  <div class="table-card-header">
+    <div>
+      <h2>{{ npm_inventory_rows|length }} package{{ 's' if npm_inventory_rows|length != 1 }}</h2>
+      <p>From <strong>{{ npm_environment_count }}</strong> enrolled environment{{ 's' if npm_environment_count != 1 else '' }} (endpoint sensors). Global installs and shallow <code>~/</code> <code>package.json</code> dependencies are collected when the <code>npm_packages</code> policy collector is enabled and <code>npm</code> is on the sensor path.</p>
+    </div>
+  </div>
+  <table id="npm-inventory-table" class="interactive-table">
+    <thead>
+      <tr>
+        <th><button type="button" class="sort-control" data-col="0" data-type="text">Environment <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="1" data-type="text">Platform <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="2" data-type="text">Package <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="3" data-type="text">Version / range <span class="sort-mark"></span></button></th>
+        <th><button type="button" class="sort-control" data-col="4" data-type="text">Origin <span class="sort-mark"></span></button></th>
+        <th class="finding-row-affordance-heading" aria-label="Sensor"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in npm_inventory_rows %}
+      <tr>
+        <td>{{ row.hostname }}</td>
+        <td><span class="badge badge-info">{{ row.platform }}</span></td>
+        <td><code>{{ row.name }}</code></td>
+        <td class="uuid-full"><code>{{ row.version or '—' }}</code></td>
+        <td class="host-list"><code>{{ row.origin }}</code></td>
+        <td class="finding-row-affordance">
+          <a class="finding-row-open" href="/sensors/{{ row.sensor_id }}" aria-label="Open sensor {{ row.hostname }}" title="Sensor"></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<script>
+(function () {
+  var table = document.getElementById('npm-inventory-table');
+  if (!table) return;
+  var sortState = { col: -1, asc: true };
+  function rows() {
+    return Array.prototype.slice.call(table.querySelectorAll('tbody tr'));
+  }
+  function cellValue(row, col, type) {
+    var cell = row.children[col];
+    var raw = cell.getAttribute('data-sort') || cell.textContent.trim();
+    if (type === 'number') return parseInt(raw, 10) || 0;
+    return raw.toLowerCase();
+  }
+  function sortBy(col, type, control) {
+    var asc = sortState.col === col ? !sortState.asc : true;
+    sortState = { col: col, asc: asc };
+    table.querySelectorAll('.sort-control').forEach(function (button) {
+      button.removeAttribute('aria-sort');
+      var mark = button.querySelector('.sort-mark');
+      if (mark) mark.textContent = '';
+    });
+    control.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
+    control.querySelector('.sort-mark').textContent = asc ? 'asc' : 'desc';
+    var tbody = table.querySelector('tbody');
+    rows().sort(function (a, b) {
+      var aVal = cellValue(a, col, type);
+      var bVal = cellValue(b, col, type);
+      if (aVal < bVal) return asc ? -1 : 1;
+      if (aVal > bVal) return asc ? 1 : -1;
+      return 0;
+    }).forEach(function (row) { tbody.appendChild(row); });
+  }
+  table.querySelectorAll('.sort-control').forEach(function (control) {
+    control.addEventListener('click', function () {
+      sortBy(parseInt(control.getAttribute('data-col'), 10), control.getAttribute('data-type'), control);
+    });
+  });
+})();
+</script>
+{% else %}
+<div class="empty-state">
+  <h3>No NPM inventory yet</h3>
+  <p>Install the endpoint sensor on machines where you want dependency visibility. After heartbeats include the <code>npm_packages</code> collector (enabled by default for new enrollments), packages appear here. Ensure <code>npm</code> is installed on the sensor host, or add <code>npm_scan_roots</code> paths in the merged sensor policy for extra <code>package.json</code> locations.</p>
+  <p><a href="/sensors" class="btn btn-primary">Go to Sensors</a></p>
+</div>
+{% endif %}
+</div>
+
+<script>
+function showFindingsTab(name) {
+  document.querySelectorAll('.settings-panel').forEach(function (p) { p.style.display = 'none'; });
+  document.querySelectorAll('.settings-tabs .settings-tab').forEach(function (t) {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+  });
+  document.getElementById('panel-' + name).style.display = 'block';
+  var tabBtn = document.getElementById('tab-' + name);
+  tabBtn.classList.add('active');
+  tabBtn.setAttribute('aria-selected', 'true');
+  history.replaceState(null, '', '/findings?tab=' + name);
+}
+var params = new URLSearchParams(window.location.search);
+var tab = params.get('tab');
+if (tab === 'npm' && document.getElementById('panel-npm')) showFindingsTab('npm');
+</script>
 {% endblock %}

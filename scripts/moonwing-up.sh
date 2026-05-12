@@ -4,4 +4,4 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-exec docker compose --profile app up -d --build "$@"
+docker compose --profile app up -d --build "$@"

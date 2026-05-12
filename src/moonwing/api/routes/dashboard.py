@@ -48,6 +48,7 @@ from moonwing.services.oidc import (
     validate_oidc_claims,
 )
 from moonwing.services.management import build_management_summary
+from moonwing.services.npm_inventory_catalog import aggregate_npm_inventory_rows
 from moonwing.services.notifications import (
     ALL_EVENT_TYPES,
     EVENT_FINDING_REMEDIATED,
@@ -964,10 +965,15 @@ def findings_page(request: Request, db: Session = Depends(get_db)):
     severity_counts = {}
     for sev in ['critical', 'high', 'medium', 'low', 'info', 'unknown']:
         severity_counts[sev] = db.query(func.count(Finding.id)).filter(Finding.severity == sev).scalar() or 0
+    sensors = db.query(SensorEndpoint).order_by(SensorEndpoint.hostname.asc()).all()
+    npm_inventory_rows = aggregate_npm_inventory_rows(sensors)
+    npm_environment_count = len({r['sensor_id'] for r in npm_inventory_rows})
     return _render(request, 'findings.html', {'active': 'findings',
         'findings': findings,
         'severity_counts': severity_counts,
         'product_options': sorted(product_options),
+        'npm_inventory_rows': npm_inventory_rows,
+        'npm_environment_count': npm_environment_count,
     })
 
 
