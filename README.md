@@ -119,8 +119,26 @@ Browse to `http://YOUR_SERVER:8000`, or HTTPS behind your reverse proxy, and fin
 
 ### Updating after `git pull`
 
+**One command on the server** (git pull with safety checks, rebuild Compose stack, wait for `/health`):
+
+```bash
+cd /opt/moonwing/Moonwing   # your clone path
+./scripts/moonwing-upgrade.sh
+```
+
+Equivalent manual steps:
+
 ```bash
 git pull origin main && ./scripts/moonwing-up.sh
+```
+
+`moonwing-upgrade.sh` refuses a dirty working tree unless you set **`MOONWING_SKIP_GIT=1`** (for rsync-only deploys). Optional: **`MOONWING_GIT_BRANCH`** when there is no upstream tracking branch, **`MOONWING_HEALTH_URL`** if the API is only reachable on another host/port from the server shell.
+
+**From a Windows workstation** (OpenSSH `ssh` on PATH), run the same upgrade on a remote Linux path:
+
+```powershell
+cd D:\Projects\Moonwing   # your local clone (any path with this repo)
+.\scripts\Invoke-MoonwingUpgradeRemote.ps1 -HostName YOUR_SERVER -RemoteGitRoot /opt/moonwing/Moonwing
 ```
 
 Rebuilding runs the migration container again during `up`; **`alembic upgrade head`** is idempotent.
@@ -165,6 +183,8 @@ Administrators integrating with existing fleets may instead:
 |------|--------|
 | [`deploy/ansible/`](deploy/ansible/) | Install manager or sensors onto raw Linux hosts with Ansible inventories |
 | [`deploy/scripts/deploy-manager.ps1`](deploy/scripts/deploy-manager.ps1) | Sync this repo over SSH into venv/systemd installs from a PowerShell workstation |
+| [`scripts/moonwing-upgrade.sh`](scripts/moonwing-upgrade.sh) | On-server **Docker Compose** upgrade: `git pull` (optional), `./scripts/moonwing-up.sh`, `/health` wait |
+| [`scripts/Invoke-MoonwingUpgradeRemote.ps1`](scripts/Invoke-MoonwingUpgradeRemote.ps1) | From Windows, SSH to the Linux host and run `moonwing-upgrade.sh` in a given repo path |
 | [Local development](#local-development-developers-only) below | Postgres/Redis/MinIO in Compose, Python API on laptop |
 
 Compose remains default for “single logical install Git-tracked beside automation.”

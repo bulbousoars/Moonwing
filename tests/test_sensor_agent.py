@@ -1,5 +1,10 @@
 from moonwing_sensor.agent import build_heartbeat_payload, normalize_server_url
-from moonwing_sensor.collectors import collect_host_inventory, packages_from_dpkg_status
+from moonwing_sensor.collectors import (
+    collect_host_inventory,
+    packages_from_dpkg_status,
+    packages_from_npm_ls_tree,
+    packages_from_package_json,
+)
 
 
 def test_normalize_server_url_removes_trailing_slash():
@@ -36,3 +41,33 @@ def test_heartbeat_payload_respects_policy_collectors():
     assert "host" in payload["inventory"]
     assert "packages" in payload["inventory"]
     assert "network" in payload
+
+
+def test_heartbeat_payload_includes_npm_packages_when_collector_enabled():
+    payload = build_heartbeat_payload({"collectors": ["host", "npm_packages"]})
+
+    assert "host" in payload["inventory"]
+    assert "npm_packages" in payload["inventory"]
+    assert isinstance(payload["inventory"]["npm_packages"], list)
+
+
+def test_packages_from_npm_ls_tree_skips_missing_entries():
+    tree = {
+        "dependencies": {
+            "npm": {"version": "10.0.0"},
+            "ghost": {"missing": True},
+            "bad": "not-a-dict",
+        }
+    }
+    out = packages_from_npm_ls_tree(tree, origin_label="global")
+    assert out == [{"name": "npm", "version": "10.0.0", "origin": "global"}]
+
+
+def test_packages_from_package_json_merges_dependency_sections(tmp_path):
+    pj = tmp_path / "package.json"
+    pj.write_text('{"dependencies":{"a":"1.0.0"},"devDependencies":{"b":"^2.0.0"}}', encoding="utf-8")
+    out = packages_from_package_json(pj)
+    by_name = {row["name"]: row for row in out}
+    assert by_name["a"]["version"] == "1.0.0"
+    assert by_name["b"]["version"] == "^2.0.0"
+    assert by_name["a"]["origin"].startswith("project:")
