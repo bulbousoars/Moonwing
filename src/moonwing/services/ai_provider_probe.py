@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import os
+import shutil
+from typing import Any
+
 import httpx
+
+from moonwing.config import Settings
 
 
 # Which local CLI binary handles each provider in CLI execution mode.
@@ -73,6 +79,77 @@ OPENAI_COMPATIBLE_ENDPOINTS = {
     "openrouter": "https://openrouter.ai/api/v1/chat/completions",
     "ollama": "http://host.docker.internal:11434/v1/chat/completions",
 }
+
+CLI_PROBE_WORKER_NOTE = (
+    "CLI scans run inside the Moonwing worker process. If the API and worker use separate "
+    "containers or hosts, the paths below reflect only this process; check worker startup logs "
+    "for the worker's own probe line."
+)
+
+
+def cli_binary_executable(path: str) -> bool:
+    """True if ``path`` is an executable we can invoke (PATH lookup or absolute path)."""
+    if os.sep in path or (os.altsep and os.altsep in path):
+        return bool(os.path.isfile(path) and os.access(path, os.X_OK))
+    return shutil.which(path) is not None
+
+
+def resolve_cli_binary(configured: str) -> str | None:
+    """Return an absolute path when the CLI is available, else None."""
+    if os.sep in configured or (os.altsep and os.altsep in configured):
+        if os.path.isfile(configured) and os.access(configured, os.X_OK):
+            return os.path.abspath(configured)
+        return None
+    found = shutil.which(configured)
+    return os.path.abspath(found) if found else None
+
+
+def discover_ai_cli_tools(
+    settings: Settings | None = None,
+    *,
+    process_label: str = "moonwing",
+) -> dict[str, Any]:
+    """Probe configured AI CLIs the same way staging checks before a CLI-mode run."""
+    settings = settings or Settings()
+    slots: list[dict[str, Any]] = [
+        {
+            "id": "claude",
+            "display_name": "Anthropic Claude CLI",
+            "env_var": "MOONWING_CLAUDE_CLI_BINARY",
+            "configured_value": settings.claude_cli_binary,
+            "providers": ["anthropic"],
+        },
+        {
+            "id": "codex",
+            "display_name": "OpenAI Codex CLI (also OpenRouter + Ollama routing)",
+            "env_var": "MOONWING_CODEX_CLI_BINARY",
+            "configured_value": settings.codex_cli_binary,
+            "providers": ["openai", "openrouter", "ollama"],
+        },
+        {
+            "id": "gemini",
+            "display_name": "Google Gemini CLI",
+            "env_var": "MOONWING_GEMINI_CLI_BINARY",
+            "configured_value": settings.gemini_cli_binary,
+            "providers": ["google"],
+        },
+    ]
+    tools: list[dict[str, Any]] = []
+    for slot in slots:
+        cfg = str(slot["configured_value"] or "").strip() or slot["id"]
+        tools.append(
+            {
+                **slot,
+                "configured_value": cfg,
+                "resolved_path": resolve_cli_binary(cfg),
+                "available": cli_binary_executable(cfg),
+            }
+        )
+    return {
+        "process_label": process_label,
+        "note": CLI_PROBE_WORKER_NOTE,
+        "tools": tools,
+    }
 
 
 class ProviderProbeError(ValueError):

@@ -10,6 +10,8 @@
 <div class="probe-result error" style="max-width:760px; margin-bottom:16px;">{{ error }}</div>
 {% endif %}
 
+{% include "_cli_tools_probe.html" %}
+
 <div class="detail-card" style="max-width:760px">
   <form method="post" action="/schedules/new">
     <div class="form-group">
@@ -85,6 +87,7 @@
         <option value="api">API</option>
         <option value="cli">CLI</option>
       </select>
+      <small style="color:var(--text-muted)">Use <strong>API</strong> unless the worker has claude/codex/gemini installed (default Docker image does not).</small>
     </div>
     <div class="form-group">
       <label for="ai_instruction">Instructions for the AI (optional)</label>

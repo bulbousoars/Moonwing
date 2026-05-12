@@ -114,6 +114,9 @@ def _make_queued_run(
     target: Target | None = None,
     job_family: str = "network_scan",
     execution_snapshot: dict | None = None,
+    provider: str = "openai",
+    model: str = "gpt-5.2",
+    execution_mode: str = "api",
 ) -> Run:
     run = Run(
         id=uuid4(),
@@ -123,8 +126,9 @@ def _make_queued_run(
         credential_id=credential.id,
         runtime_profile_id=profile.id,
         target_id=target.id if target else None,
-        provider="openai",
-        model="gpt-5.2",
+        provider=provider,
+        model=model,
+        execution_mode=execution_mode,
         execution_snapshot=execution_snapshot or {},
     )
     session.add(run)
@@ -213,6 +217,26 @@ class TestStageRun:
         prompt = staged.command[-1]
         assert "TLS 1.2" in prompt
         assert "Additional instructions from the operator" in prompt
+
+    def test_stage_run_cli_raises_when_scanner_binary_missing(
+        self, monkeypatch, session, object_store, seed_user, seed_credential, seed_runtime_profile, seed_target,
+    ):
+        monkeypatch.setattr("moonwing.services.ai_provider_probe.shutil.which", lambda _cmd: None)
+        monkeypatch.setattr("moonwing.services.ai_provider_probe.os.path.isfile", lambda _p: False)
+
+        run = _make_queued_run(
+            session,
+            user=seed_user,
+            credential=seed_credential,
+            profile=seed_runtime_profile,
+            target=seed_target,
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            execution_mode="cli",
+        )
+
+        with pytest.raises(StagingError, match="CLI scanner not found"):
+            stage_run(session=session, run_id=run.id, object_store=object_store)
 
     def test_stage_run_resolves_artifacts_with_provenance(
         self, session, object_store, seed_user, seed_credential, seed_runtime_profile,

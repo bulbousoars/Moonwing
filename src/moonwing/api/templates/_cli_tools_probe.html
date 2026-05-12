@@ -1,0 +1,32 @@
+{# Requires cli_tool_report from discover_ai_cli_tools(...) #}
+<details class="detail-card" style="max-width:760px; margin-bottom:16px;">
+  <summary style="cursor:pointer;font-weight:600;">Local AI CLI detection ({{ cli_tool_report.process_label }})</summary>
+  <p style="margin:10px 0; font-size:0.9rem; color:var(--text-muted);">{{ cli_tool_report.note }}</p>
+  <table class="data-table" style="width:100%; font-size:0.9rem;">
+    <thead>
+      <tr>
+        <th>Tool</th>
+        <th>Configured</th>
+        <th>Resolved path</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in cli_tool_report.tools %}
+      <tr>
+        <td>
+          <strong>{{ t.display_name }}</strong><br>
+          <span style="color:var(--text-muted); font-size:0.85rem;">{{ t.env_var }}</span><br>
+          <span style="color:var(--text-muted); font-size:0.85rem;">Providers: {{ t.providers | join(', ') }}</span>
+        </td>
+        <td><code>{{ t.configured_value }}</code></td>
+        <td>{% if t.resolved_path %}<code style="word-break:break-all;">{{ t.resolved_path }}</code>{% else %}—{% endif %}</td>
+        <td>{% if t.available %}<span style="color:var(--ok, #0a0);">Found</span>{% else %}<span style="color:var(--danger, #c00);">Not found</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin:10px 0 0 0; font-size:0.85rem; color:var(--text-muted);">
+    Machine-readable (signed-in): <code>GET /api/runs/cli-tools</code> — same environment as this page unless you split API and worker.
+  </p>
+</details>

@@ -6,13 +6,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from moonwing.api.deps import get_db
+from moonwing.api.deps import _get_settings, get_db
 from moonwing.db.models import Credential, Run, Finding, RuntimeProfileRecord, Target, User
 from moonwing.schemas.runs import RunCreateRequest, RunCreateResponse
 from moonwing.services.runs import create_run_snapshot
+from moonwing.services.ai_provider_probe import discover_ai_cli_tools
 from moonwing.worker.clearwing_runner import DEFAULT_AI_INSTRUCTION_MAX_CHARS
 
 router = APIRouter()
+
+
+@router.get('/cli-tools')
+def list_cli_tools():
+    """Report which configured AI CLIs exist on PATH in this process (typically moonwing-api)."""
+    return discover_ai_cli_tools(_get_settings(), process_label='moonwing-api')
 
 
 class RunLaunchRequest(BaseModel):

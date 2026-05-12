@@ -23,6 +23,7 @@ from moonwing.services.ai_provider_probe import (
     PROVIDER_CLI_BINARIES,
     PROVIDER_DEFAULT_MODELS,
     PROVIDER_MODELS,
+    discover_ai_cli_tools,
 )
 from moonwing.services.auth import create_session_token, create_service_token, hash_password, hash_service_token, verify_password
 from moonwing.services.crypto import CryptoError, decrypt_api_key, encrypt_api_key, mask_api_key
@@ -844,6 +845,7 @@ def _build_run_form_context(request: Request, db: Session, *, target: str = '', 
         'cli_binaries': PROVIDER_CLI_BINARIES,
         'initial_provider': initial_provider,
         'error': error,
+        'cli_tool_report': discover_ai_cli_tools(_get_settings(), process_label='moonwing-api'),
     }
 
 
@@ -973,6 +975,7 @@ def _schedule_form_context(db: Session) -> dict:
         'users': users,
         'credentials': credentials,
         'profiles': profiles,
+        'cli_tool_report': discover_ai_cli_tools(_get_settings(), process_label='moonwing-api'),
     }
 
 

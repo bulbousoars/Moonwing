@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from moonwing.config import Settings
 from moonwing.db.models import Run
+from moonwing.services.ai_provider_probe import discover_ai_cli_tools
 from moonwing.db.session import build_session_factory
 from moonwing.services.run_schedule_service import materialize_due_schedules
 from moonwing.worker.object_store import MinioObjectStore
@@ -56,6 +57,10 @@ def bootstrap(settings: Settings | None = None) -> dict:
         settings.object_storage_bucket,
         settings.clearwing_binary,
     )
+
+    probe = discover_ai_cli_tools(settings, process_label="moonwing-worker")
+    parts = [f"{t['id']}:{'ok' if t['available'] else 'missing'}" for t in probe["tools"]]
+    logger.info("AI CLI tool probe (%s): %s", probe["process_label"], ", ".join(parts))
 
     return {
         "settings": settings,

@@ -173,6 +173,8 @@ With **`--profile app`**, Compose also builds **`moonwing-api`**, **`moonwing-wo
 | redis | Queue placeholder / future buffering |
 | minio | Stored scan artifacts blob storage |
 
+**AI scan execution:** the default **`moonwing-worker`** image does **not** ship vendor CLIs (`claude`, `codex`, `gemini`). For **network scans** and similar jobs, use **Execution mode: API** with a credential that carries the provider’s **API key**, or install/mount the CLI in the worker and set **`MOONWING_CLAUDE_CLI_BINARY`**, **`MOONWING_CODEX_CLI_BINARY`**, or **`MOONWING_GEMINI_CLI_BINARY`** as appropriate.
+
 Compose publishes **5432 / 6379 / 9000 / 9001 / 8000** on the loopback/host—**tighten firewalls** in production and prefer private Docker networks plus a reverse-proxy surface.
 
 ---

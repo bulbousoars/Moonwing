@@ -63,7 +63,13 @@ def execute_clearwing(
             env=env,
         )
     except FileNotFoundError as exc:
-        raise ExecutionError(f"scanner binary not found: {command[0]}") from exc
+        name = command[0] if command else "scanner"
+        raise ExecutionError(
+            f"scanner binary not found: {name}. "
+            "The Moonwing worker container usually does not ship third-party AI CLIs. "
+            "Use Execution mode **API** with an API-key credential, or install the CLI on the worker "
+            "and set MOONWING_CLAUDE_CLI_BINARY / MOONWING_CODEX_CLI_BINARY / MOONWING_GEMINI_CLI_BINARY."
+        ) from exc
     except subprocess.TimeoutExpired as exc:
         raise ExecutionError(f"scanner timed out after {timeout}s") from exc
 

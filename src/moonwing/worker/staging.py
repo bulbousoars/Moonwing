@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from moonwing.db.models import Artifact, Credential, Run, RuntimeProfileRecord, Target
+from moonwing.services.ai_provider_probe import cli_binary_executable
 from moonwing.worker.clearwing_runner import build_clearwing_command
 
 
@@ -56,6 +57,10 @@ def _input_kind(target: Target | None, snapshot: dict | None) -> str:
         or (target.target_type if target else None)
         or "repo"
     )
+
+
+def _cli_binary_missing(path: str) -> bool:
+    return not cli_binary_executable(path)
 
 
 def stage_run(
@@ -110,6 +115,16 @@ def stage_run(
         clearwing_binary=clearwing_binary,
         ai_instruction=str(snapshot.get("ai_instruction") or ""),
     )
+
+    if (run.execution_mode or "api") == "cli" and command:
+        exe = command[0]
+        if _cli_binary_missing(exe):
+            raise StagingError(
+                f"CLI scanner not found or not executable: {exe!r}. "
+                "The default Moonwing Docker image does not include Claude, Codex, or Gemini CLIs. "
+                "Use Execution mode **API** with a provider API key, install the CLI in the worker environment, "
+                "or set MOONWING_CLAUDE_CLI_BINARY / MOONWING_CODEX_CLI_BINARY / MOONWING_GEMINI_CLI_BINARY to a mounted binary path."
+            )
 
     artifacts: list[StagedArtifact] = []
     if run.target_id:

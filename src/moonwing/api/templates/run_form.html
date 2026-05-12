@@ -10,6 +10,8 @@
 <div class="probe-result error" style="max-width:760px; margin-bottom:16px;">{{ error }}</div>
 {% endif %}
 
+{% include "_cli_tools_probe.html" %}
+
 <div class="detail-card" style="max-width:760px">
   <form method="post" action="/runs/new">
     <div class="form-group">
@@ -55,7 +57,7 @@
         <option value="api">API — direct call to the provider's HTTP API using the credential's API key</option>
         <option value="cli">CLI — invokes the local claude/codex/gemini binary; uses your local login (subscription)</option>
       </select>
-      <small style="color:var(--text-muted)">Switch between modes to see which providers each one supports.</small>
+      <small style="color:var(--text-muted)">Switch between modes to see which providers each one supports. <strong>Docker:</strong> the default worker image does <strong>not</strong> include those CLIs — use <strong>API</strong> on the server, or install/mount binaries and set <code>MOONWING_*_CLI_BINARY</code> in the worker environment.</small>
     </div>
 
     {% set provider_labels = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'google': 'Google', 'openrouter': 'OpenRouter', 'ollama': 'Ollama'} %}
