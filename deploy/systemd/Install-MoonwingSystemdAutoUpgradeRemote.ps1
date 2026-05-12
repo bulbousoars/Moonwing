@@ -27,6 +27,8 @@ param(
 
     [string]$GitBranch = 'main',
 
+    [int]$GitTimeoutSec = 300,
+
     [switch]$SkipGitPull
 )
 
@@ -37,22 +39,43 @@ if (-not (Test-Path -LiteralPath $SshConfig)) {
 }
 
 $repoEsc = $RepoPath -replace "'", "'\''"
+$gitTimeout = $GitTimeoutSec
 $gitFetch = if ($SkipGitPull) {
     'echo "[remote] SkipGitPull: not running git pull"'
 } else {
-    "git -C `"`$REPO`" fetch $GitRemote && git -C `"`$REPO`" pull --ff-only $GitRemote $GitBranch"
+    @"
+export GIT_TERMINAL_PROMPT=0
+if [[ ! -w "`$REPO/.git" ]]; then
+  if command -v timeout >/dev/null 2>&1; then
+    timeout $gitTimeout sudo -n git -C "`$REPO" fetch $GitRemote
+    timeout $gitTimeout sudo -n git -C "`$REPO" pull --ff-only $GitRemote $GitBranch
+  else
+    sudo -n git -C "`$REPO" fetch $GitRemote && sudo -n git -C "`$REPO" pull --ff-only $GitRemote $GitBranch
+  fi
+else
+  if command -v timeout >/dev/null 2>&1; then
+    timeout $gitTimeout git -C "`$REPO" fetch $GitRemote
+    timeout $gitTimeout git -C "`$REPO" pull --ff-only $GitRemote $GitBranch
+  else
+    git -C "`$REPO" fetch $GitRemote && git -C "`$REPO" pull --ff-only $GitRemote $GitBranch
+  fi
+fi
+"@
 }
 
 $remoteBash = @"
 set -euo pipefail
 REPO='$repoEsc'
 cd "`$REPO"
+git config --global --add safe.directory "`$REPO" 2>/dev/null || true
 $gitFetch
 sudo bash "`$REPO/deploy/systemd/install-on-host.sh"
 "@
+
+$remoteBash = ($remoteBash -replace "`r`n", "`n") -replace "`r", "`n"
 
 $bytes = [Text.Encoding]::UTF8.GetBytes($remoteBash)
 $b64 = [Convert]::ToBase64String($bytes)
 
 Write-Host "[Install-MoonwingSystemdAutoUpgradeRemote] ssh -F $SshConfig $TargetHost ..."
-ssh -F $SshConfig $TargetHost "echo $b64 | base64 -d | bash"
+ssh -F $SshConfig -o ConnectTimeout=30 -o ServerAliveInterval=20 -o BatchMode=yes $TargetHost "echo $b64 | base64 -d | bash"
