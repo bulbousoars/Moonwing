@@ -141,7 +141,7 @@ cd D:\Projects\Moonwing   # your local clone (any path with this repo)
 .\scripts\Invoke-MoonwingUpgradeRemote.ps1 -HostName YOUR_SERVER -RemoteGitRoot /opt/moonwing/Moonwing
 ```
 
-**Automatic upgrades on Linux:** install the **systemd timer** under [`deploy/systemd/`](deploy/systemd/) so the host pulls `main` (configurable) and rebuilds Compose on a daily schedule — same operational idea as the **realestate** VM’s `lunarleague-agent-deploy` flow.
+**Automatic upgrades on Linux:** install the **systemd timer** (see [`deploy/systemd/README.md`](deploy/systemd/README.md)). From Windows with OpenBao SSH, use [`Install-MoonwingSystemdAutoUpgradeRemote.ps1`](deploy/systemd/Install-MoonwingSystemdAutoUpgradeRemote.ps1) after `New-AgentSshSession.ps1 -Admin`.
 
 Rebuilding runs the migration container again during `up`; **`alembic upgrade head`** is idempotent.
 
@@ -185,7 +185,8 @@ Administrators integrating with existing fleets may instead:
 |------|--------|
 | [`deploy/ansible/`](deploy/ansible/) | Install manager or sensors onto raw Linux hosts with Ansible inventories |
 | [`deploy/scripts/deploy-manager.ps1`](deploy/scripts/deploy-manager.ps1) | Sync this repo over SSH into venv/systemd installs from a PowerShell workstation |
-| [`deploy/systemd/`](deploy/systemd/) | **systemd timer** — daily `git pull` + Compose rebuild (realestate / Lunar League-style automation) |
+| [`deploy/systemd/README.md`](deploy/systemd/README.md) | **systemd timer** — daily `git pull` + Compose rebuild; includes `install-on-host.sh` |
+| [`deploy/systemd/Install-MoonwingSystemdAutoUpgradeRemote.ps1`](deploy/systemd/Install-MoonwingSystemdAutoUpgradeRemote.ps1) | **Windows + OpenBao SSH**: pull + install timer on a remote host (pairs with `New-AgentSshSession.ps1`) |
 | [`scripts/Invoke-MoonwingUpgradeRemote.ps1`](scripts/Invoke-MoonwingUpgradeRemote.ps1) | From Windows, SSH to the Linux host and run `moonwing-upgrade.sh` in a given repo path |
 | [Local development](#local-development-developers-only) below | Postgres/Redis/MinIO in Compose, Python API on laptop |
 

@@ -10,7 +10,18 @@ Here the unit runs **`scripts/moonwing-upgrade.sh`** on a timer: **`git pull --f
 - Moonwing **git clone** at a fixed path (default **`/opt/moonwing/Moonwing`**) with **`.env`** present
 - Timer runs as **root** by default (same as the homelab `moonwing-agent-deploy` / `lunarleague-agent-deploy` wrappers). Adjust `User=` only if that user can run `docker compose` against your stack.
 
-## Install
+## Install (on the host, recommended)
+
+From the **clone root** after `git pull` so `deploy/systemd/install-on-host.sh` exists:
+
+```bash
+cd /opt/moonwing/Moonwing
+sudo bash deploy/systemd/install-on-host.sh
+```
+
+This copies the unit files, rewrites the default **`/opt/moonwing/Moonwing`** paths to match the detected repo root (via Python), runs **`systemctl daemon-reload`**, and **`systemctl enable --now moonwing-auto-upgrade.timer`**.
+
+## Install (manual copy)
 
 1. Copy unit files (edit paths first if your clone is not under `/opt/moonwing/Moonwing`):
 
@@ -46,6 +57,21 @@ Here the unit runs **`scripts/moonwing-upgrade.sh`** on a timer: **`git pull --f
    systemctl list-timers moonwing-auto-upgrade.timer
    journalctl -u moonwing-auto-upgrade.service -n 50 --no-pager
    ```
+
+## Install from Windows (OpenBao SSH broker)
+
+If you use **`New-AgentSshSession.ps1`** (homelab), open an **admin** session when the remote user must `sudo` without a password (typical for `git` in `/opt/...` and for `install-on-host.sh`):
+
+```powershell
+$s = & "$env:USERPROFILE\Scripts\homelab\New-AgentSshSession.ps1" -Agent cursor -HostName 192.168.1.215 -Admin
+cd D:\Projects\Moonwing   # or any clone with this commit
+.\deploy\systemd\Install-MoonwingSystemdAutoUpgradeRemote.ps1 `
+  -SshConfig (Join-Path $s.session_dir 'ssh_config') `
+  -TargetHost 192.168.1.215 `
+  -GitBranch main
+```
+
+**Secops Moonwing** historically tracks **`dev`** — pass **`-GitBranch dev`** if that matches your server.
 
 ## Behaviour
 
