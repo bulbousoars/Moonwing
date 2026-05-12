@@ -1,0 +1,21 @@
+[Unit]
+Description=Moonwing scheduled git pull and Docker Compose rebuild
+Documentation=https://github.com/bulbousoars/Moonwing/blob/main/deploy/systemd/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Clone root (must contain docker-compose.yml, .env, and scripts/moonwing-upgrade.sh)
+Environment=MOONWING_UPGRADE_REPO=/opt/moonwing/Moonwing
+Environment=MOONWING_GIT_BRANCH=main
+# Optional extra env, e.g. MOONWING_HEALTH_URL=https://127.0.0.1:8000/health
+# EnvironmentFile=-/etc/default/moonwing-auto-upgrade
+WorkingDirectory=/opt/moonwing/Moonwing
+ExecStart=/opt/moonwing/Moonwing/scripts/moonwing-upgrade.sh
+TimeoutStartSec=900
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

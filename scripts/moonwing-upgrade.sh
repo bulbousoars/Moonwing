@@ -3,6 +3,7 @@
 # Run on the Linux host from the repository root (same directory as docker-compose.yml).
 #
 # Environment (optional):
+#   MOONWING_UPGRADE_REPO     if set, cd here before upgrade (clone root with docker-compose.yml)
 #   MOONWING_GIT_REMOTE       default: origin
 #   MOONWING_GIT_BRANCH       default: main (used only when no upstream tracking branch exists)
 #   MOONWING_SKIP_GIT         set to 1 to skip git fetch/pull (e.g. you rsynced the tree by hand)
@@ -10,7 +11,12 @@
 #   MOONWING_HEALTH_RETRIES   default: 30 (two-second sleep between attempts)
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="${MOONWING_UPGRADE_REPO:-}"
+if [[ -n "$ROOT" ]]; then
+  ROOT="$(cd "$ROOT" && pwd)"
+else
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 cd "$ROOT"
 
 if [[ ! -f .env ]]; then

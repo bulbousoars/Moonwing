@@ -141,6 +141,8 @@ cd D:\Projects\Moonwing   # your local clone (any path with this repo)
 .\scripts\Invoke-MoonwingUpgradeRemote.ps1 -HostName YOUR_SERVER -RemoteGitRoot /opt/moonwing/Moonwing
 ```
 
+**Automatic upgrades on Linux:** install the **systemd timer** under [`deploy/systemd/`](deploy/systemd/) so the host pulls `main` (configurable) and rebuilds Compose on a daily schedule — same operational idea as the **realestate** VM’s `lunarleague-agent-deploy` flow.
+
 Rebuilding runs the migration container again during `up`; **`alembic upgrade head`** is idempotent.
 
 ---
@@ -183,7 +185,7 @@ Administrators integrating with existing fleets may instead:
 |------|--------|
 | [`deploy/ansible/`](deploy/ansible/) | Install manager or sensors onto raw Linux hosts with Ansible inventories |
 | [`deploy/scripts/deploy-manager.ps1`](deploy/scripts/deploy-manager.ps1) | Sync this repo over SSH into venv/systemd installs from a PowerShell workstation |
-| [`scripts/moonwing-upgrade.sh`](scripts/moonwing-upgrade.sh) | On-server **Docker Compose** upgrade: `git pull` (optional), `./scripts/moonwing-up.sh`, `/health` wait |
+| [`deploy/systemd/`](deploy/systemd/) | **systemd timer** — daily `git pull` + Compose rebuild (realestate / Lunar League-style automation) |
 | [`scripts/Invoke-MoonwingUpgradeRemote.ps1`](scripts/Invoke-MoonwingUpgradeRemote.ps1) | From Windows, SSH to the Linux host and run `moonwing-upgrade.sh` in a given repo path |
 | [Local development](#local-development-developers-only) below | Postgres/Redis/MinIO in Compose, Python API on laptop |
 
