@@ -22,6 +22,9 @@ htmlcov/
 .env
 *.local.env
 
+# Local Compose overrides (host-specific ports, bind mounts)
+docker-compose.override.yml
+
 # Editor / OS junk
 .idea/
 .vscode/
