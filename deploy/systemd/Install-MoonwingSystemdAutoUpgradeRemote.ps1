@@ -8,8 +8,8 @@
   `git pull` and `install-on-host.sh`). Pass the same **HostName** you used for the broker session.
 
   Example (daily timer only):
-    $s = & "$env:USERPROFILE\Scripts\homelab\New-AgentSshSession.ps1" -Agent cursor -HostName 192.168.1.215 -Admin
-    & "$PSScriptRoot\Install-MoonwingSystemdAutoUpgradeRemote.ps1" -SshConfig (Join-Path $s.session_dir 'ssh_config') -TargetHost 192.168.1.215
+    $s = & "C:\path\to\New-AgentSshSession.ps1" -Agent cursor -HostName moonwing.example.org -Admin
+    & "$PSScriptRoot\Install-MoonwingSystemdAutoUpgradeRemote.ps1" -SshConfig (Join-Path $s.session_dir 'ssh_config') -TargetHost moonwing.example.org
 
   Example (pull again ~10 min after each upgrade — active dev):
     ... same $s ... -AutoUpgradeIntervalMinutes 10 -GitBranch main

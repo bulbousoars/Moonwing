@@ -8,10 +8,7 @@
   Authentication: use ssh-agent, an SSH key, or your configured default (interactive passwords are not scripted).
 
 .EXAMPLE
-  .\scripts\Invoke-MoonwingUpgradeRemote.ps1 -HostName moonwing.internal -RemoteGitRoot /opt/moonwing/Moonwing
-
-.EXAMPLE
-  .\scripts\Invoke-MoonwingUpgradeRemote.ps1 -HostName 192.168.1.50 -User dduggan -RemoteGitRoot /opt/moonwing/Moonwing
+  .\scripts\Invoke-MoonwingUpgradeRemote.ps1 -HostName moonwing.internal -User deploy -RemoteGitRoot /opt/moonwing/Moonwing
 #>
 param(
     [Parameter(Mandatory = $true)]

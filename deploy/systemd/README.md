@@ -1,6 +1,6 @@
 # Moonwing automatic Compose upgrades (systemd)
 
-This matches the **scheduled pull + rebuild** idea used on the **realestate** VM for the Lunar League / Crescent-style stack (`lunarleague-agent-deploy`: `git fetch`, fast-forward to `origin/main`, `docker compose up --build`).
+This follows the same **scheduled pull + rebuild** pattern many teams use for Compose stacks on Linux: `git fetch`, fast-forward to `origin/main`, `docker compose up --build`.
 
 Here the unit runs **`scripts/moonwing-upgrade.sh`** on a timer: **`git pull --ff-only`**, **`docker compose --profile app up -d --build`**, then waits for **`/health`**.
 
@@ -8,7 +8,7 @@ Here the unit runs **`scripts/moonwing-upgrade.sh`** on a timer: **`git pull --f
 
 - Linux host with **systemd** and **Docker Compose v2**
 - Moonwing **git clone** at a fixed path (default **`/opt/moonwing/Moonwing`**) with **`.env`** present
-- Timer runs as **root** by default (same as the homelab `moonwing-agent-deploy` / `lunarleague-agent-deploy` wrappers). Adjust `User=` only if that user can run `docker compose` against your stack.
+- Timer runs as **root** by default (typical for unattended deploy wrappers). Adjust `User=` only if that user can run `docker compose` against your stack.
 
 ## Install (on the host, recommended)
 
@@ -71,19 +71,19 @@ This adds **`/etc/systemd/system/moonwing-auto-upgrade.timer.d/50-frequent.conf`
 
 ## Install from Windows (OpenBao SSH broker)
 
-If you use **`New-AgentSshSession.ps1`** (homelab), open an **admin** session when the remote user must `sudo` without a password (typical for `git` in `/opt/...` and for `install-on-host.sh`):
+If you use a broker helper such as **`New-AgentSshSession.ps1`**, open an **admin** session when the remote user must `sudo` without a password (typical for `git` in `/opt/...` and for `install-on-host.sh`):
 
 ```powershell
-$s = & "$env:USERPROFILE\Scripts\homelab\New-AgentSshSession.ps1" -Agent cursor -HostName 192.168.1.215 -Admin
-cd D:\Projects\Moonwing   # or any clone with this commit
+$s = & "C:\path\to\New-AgentSshSession.ps1" -Agent cursor -HostName moonwing.example.org -Admin
+cd C:\path\to\Moonwing   # your local clone of this repo
 .\deploy\systemd\Install-MoonwingSystemdAutoUpgradeRemote.ps1 `
   -SshConfig (Join-Path $s.session_dir 'ssh_config') `
-  -TargetHost 192.168.1.215 `
+  -TargetHost moonwing.example.org `
   -GitBranch main `
   -AutoUpgradeIntervalMinutes 10
 ```
 
-**Secops** uses **`main`** for Moonwing. Use **`-AutoUpgradeIntervalMinutes 10`** (or `5`) so each successful upgrade schedules another pull a few minutes later; you stay off the box aside from the brokered SSH session this script opens.
+Replace **`moonwing.example.org`** with your SSH target, **`-GitBranch`** with the branch that host should track, and tune **`-AutoUpgradeIntervalMinutes`** (or omit it) for how often you want pull/rebuild after each successful run.
 
 ## Behaviour
 
@@ -100,7 +100,7 @@ Refuses a **dirty** git working tree (same as manual upgrade). For hosts with a 
 
 ## Sudo-only deploy (agents)
 
-For **OpenSSH agent** access without membership in the `docker` group, use a **root-owned** wrapper and sudoers, same pattern as **`lunarleague-agent-deploy`** / **`moonwing-agent-deploy`** in `OPENBAO-AGENT-AUTH.md`. The timer can call that wrapper’s absolute path instead of `moonwing-upgrade.sh` if you keep Docker behind sudo.
+For **OpenSSH agent** access without membership in the `docker` group, use a **root-owned** wrapper and sudoers (see your internal runbook for agent SSH + sudo patterns). The timer can call that wrapper’s absolute path instead of `moonwing-upgrade.sh` if you keep Docker behind sudo.
 
 ## Manual test (no timer)
 

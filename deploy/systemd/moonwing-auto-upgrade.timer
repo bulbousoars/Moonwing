@@ -3,7 +3,7 @@ Description=Daily timer for Moonwing Compose auto-upgrade
 Documentation=https://github.com/bulbousoars/Moonwing/blob/main/deploy/systemd/README.md
 
 [Timer]
-# Once per day, staggered (similar spirit to a cron @daily on the realestate app host)
+# Once per day, staggered (similar spirit to a typical @daily maintenance window)
 OnCalendar=*-*-* 04:15:00
 RandomizedDelaySec=45min
 Persistent=true
