@@ -79,11 +79,11 @@ cd D:\Projects\Moonwing   # or any clone with this commit
 .\deploy\systemd\Install-MoonwingSystemdAutoUpgradeRemote.ps1 `
   -SshConfig (Join-Path $s.session_dir 'ssh_config') `
   -TargetHost 192.168.1.215 `
-  -GitBranch dev `
+  -GitBranch main `
   -AutoUpgradeIntervalMinutes 10
 ```
 
-**Secops Moonwing** historically tracks **`dev`** — pass **`-GitBranch dev`** if that matches your server. Use **`-AutoUpgradeIntervalMinutes 10`** (or `5`) so each successful upgrade schedules another pull a few minutes later; you stay off the box aside from the brokered SSH session this script opens.
+**Secops** uses **`main`** for Moonwing. Use **`-AutoUpgradeIntervalMinutes 10`** (or `5`) so each successful upgrade schedules another pull a few minutes later; you stay off the box aside from the brokered SSH session this script opens.
 
 ## Behaviour
 

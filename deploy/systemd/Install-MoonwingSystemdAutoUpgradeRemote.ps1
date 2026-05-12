@@ -12,7 +12,7 @@
     & "$PSScriptRoot\Install-MoonwingSystemdAutoUpgradeRemote.ps1" -SshConfig (Join-Path $s.session_dir 'ssh_config') -TargetHost 192.168.1.215
 
   Example (pull again ~10 min after each upgrade — active dev):
-    ... same $s ... -AutoUpgradeIntervalMinutes 10 -GitBranch dev
+    ... same $s ... -AutoUpgradeIntervalMinutes 10 -GitBranch main
 
 .NOTES
   Requires: OpenSSH client, Python 3 on the remote (used by install-on-host.sh for unit templating).
