@@ -89,6 +89,30 @@ Output results as JSON:
 Only output the JSON object as your final answer, no other text.\
 """
 
+DEFAULT_AI_INSTRUCTION_MAX_CHARS = 16_000
+
+
+def append_operator_ai_instruction(
+    prompt: str,
+    instruction: str | None,
+    *,
+    max_chars: int = DEFAULT_AI_INSTRUCTION_MAX_CHARS,
+) -> str:
+    """Append free-form operator notes to the scanning prompt (API + CLI)."""
+    if instruction is None:
+        return prompt
+    text = instruction.strip()
+    if not text:
+        return prompt
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n…(truncated)"
+    return (
+        f"{prompt}\n\n"
+        "## Additional instructions from the operator\n"
+        "Prioritize the following when analyzing and reporting findings.\n\n"
+        f"{text}\n"
+    )
+
 
 def _get_prompt(job_family: str, source_ref: str, *, nmap_output: str = "") -> str:
     """Return the scanning prompt for the given job family."""
@@ -136,6 +160,7 @@ def build_clearwing_command(
     model: str = "claude-sonnet-4-6",
     clearwing_binary: str | None = None,
     nmap_output: str = "",
+    ai_instruction: str = "",
 ) -> list[str]:
     """Build a CLI command list for the appropriate AI tool.
 
@@ -171,7 +196,10 @@ def build_clearwing_command(
             return [clearwing_binary, "scan", source_ref]
         return [clearwing_binary, "sourcehunt", source_ref]
 
-    prompt = _get_prompt(job_family, source_ref, nmap_output=nmap_output)
+    prompt = append_operator_ai_instruction(
+        _get_prompt(job_family, source_ref, nmap_output=nmap_output),
+        ai_instruction or None,
+    )
     settings = Settings()
 
     if provider == "anthropic":

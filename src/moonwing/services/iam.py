@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -29,6 +30,20 @@ def audit(
             metadata_json=metadata or {},
         )
     )
+    try:
+        from moonwing.services.siem import emit_audit_event
+
+        emit_audit_event(
+            action=action,
+            resource_type=resource_type,
+            actor_user_id=actor_user_id,
+            resource_id=resource_id,
+            outcome=outcome,
+            metadata=metadata or {},
+        )
+    except Exception:
+        logger = logging.getLogger(__name__)
+        logger.debug("siem audit emit skipped", exc_info=True)
 
 
 def bootstrap_admin(session: Session, settings: Settings) -> User | None:

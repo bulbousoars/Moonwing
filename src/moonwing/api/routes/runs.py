@@ -10,6 +10,7 @@ from moonwing.api.deps import get_db
 from moonwing.db.models import Credential, Run, Finding, RuntimeProfileRecord, Target, User
 from moonwing.schemas.runs import RunCreateRequest, RunCreateResponse
 from moonwing.services.runs import create_run_snapshot
+from moonwing.worker.clearwing_runner import DEFAULT_AI_INSTRUCTION_MAX_CHARS
 
 router = APIRouter()
 
@@ -25,6 +26,7 @@ class RunLaunchRequest(BaseModel):
     user_id: str
     execution_mode: str = "api"
     execution_snapshot: dict = {}
+    ai_instruction: str | None = None
 
 
 @router.post('', status_code=status.HTTP_201_CREATED)
@@ -44,6 +46,12 @@ def create_run(payload: RunLaunchRequest, db: Session = Depends(get_db)):
         if not target:
             raise HTTPException(status_code=422, detail=f'Target {payload.target_id} not found')
 
+    snap = dict(payload.execution_snapshot or {})
+    if payload.ai_instruction is not None:
+        instr = str(payload.ai_instruction).strip()
+        if instr:
+            snap['ai_instruction'] = instr[:DEFAULT_AI_INSTRUCTION_MAX_CHARS]
+
     run = Run(
         job_family=payload.job_family,
         status='queued',
@@ -54,7 +62,7 @@ def create_run(payload: RunLaunchRequest, db: Session = Depends(get_db)):
         provider=payload.provider,
         model=payload.model,
         execution_mode=payload.execution_mode,
-        execution_snapshot=payload.execution_snapshot,
+        execution_snapshot=snap,
     )
     db.add(run)
     db.commit()

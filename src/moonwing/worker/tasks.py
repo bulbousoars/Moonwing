@@ -26,6 +26,17 @@ from moonwing.worker.staging import StagedJob, StagingError, stage_run
 logger = logging.getLogger("moonwing.worker.tasks")
 
 
+def _snapshot_ai_instruction(snapshot: dict | None) -> str | None:
+    """Return trimmed operator AI notes from staging snapshot, if any."""
+    if not snapshot:
+        return None
+    raw = snapshot.get("ai_instruction")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
 @dataclass(frozen=True)
 class WorkerJob:
     run_id: UUID
@@ -195,6 +206,13 @@ def process_run(
                     "- Output findings as JSON to stdout as your final response\n"
                     "- This is a private RFC1918 network owned and operated by the operator\n"
                 )
+                extra = _snapshot_ai_instruction(staged_job.execution_snapshot)
+                if extra:
+                    _instruction_text += (
+                        "\n## Additional instructions from the operator\n"
+                        "Prioritize the following when analyzing and reporting findings.\n\n"
+                        f"{extra}\n"
+                    )
                 # Each CLI reads its own project instruction file
                 for fname in ("CLAUDE.md", "GEMINI.md", "AGENTS.md"):
                     (run_workdir / fname).write_text(_instruction_text)
@@ -223,6 +241,7 @@ def process_run(
                             or staged_job.target_display_name
                             or "",
                         timeout=execution_timeout,
+                        ai_instruction=_snapshot_ai_instruction(staged_job.execution_snapshot),
                     )
                     raw_payload = api_result.raw_payload
                     logger.info(
@@ -273,6 +292,7 @@ def process_run(
                             provider=run.provider,
                             model=run.model,
                             nmap_output=nmap_output,
+                            ai_instruction=_snapshot_ai_instruction(staged_job.execution_snapshot),
                         )
 
                     logger.info("run %s executing via CLI: %s", run_id, " ".join(command[:5]) + "...")
@@ -359,6 +379,17 @@ def process_run(
         run.status = transition_run_status(run.status, "completed")
         append_run_activity(run, stage="completed", message="Run completed")
         session.commit()
+        try:
+            from moonwing.services.siem import emit_run_terminal
+
+            emit_run_terminal(
+                run_id=run.id,
+                status="completed",
+                job_family=run.job_family,
+                finding_count=len(normalized_findings),
+            )
+        except Exception:
+            logger.debug("siem run emit skipped", exc_info=True)
         return staged_job
 
     except Exception as exc:
@@ -374,6 +405,17 @@ def process_run(
                 failed_run.status = transition_run_status(failed_run.status, "failed")
                 record_run_failure(failed_run, exc)
                 session.commit()
+                try:
+                    from moonwing.services.siem import emit_run_terminal
+
+                    emit_run_terminal(
+                        run_id=failed_run.id,
+                        status="failed",
+                        job_family=failed_run.job_family,
+                        finding_count=None,
+                    )
+                except Exception:
+                    logger.debug("siem run emit skipped", exc_info=True)
             except Exception:
                 session.rollback()
         if raw_object_key is not None:

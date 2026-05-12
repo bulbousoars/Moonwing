@@ -41,6 +41,11 @@ BOOTSTRAP_ALLOWED_PATHS = {
 
 @app.on_event("startup")
 def _startup() -> None:
+    settings = _get_settings()
+    if settings.log_json_to_stdout:
+        from moonwing.services.logging_json import configure_json_stdout_logging
+
+        configure_json_stdout_logging()
     session = _get_session_factory()()
     try:
         bootstrap_admin(session, _get_settings())

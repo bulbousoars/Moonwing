@@ -108,6 +108,7 @@ def stage_run(
         provider=run.provider,
         model=run.model,
         clearwing_binary=clearwing_binary,
+        ai_instruction=str(snapshot.get("ai_instruction") or ""),
     )
 
     artifacts: list[StagedArtifact] = []

@@ -98,6 +98,29 @@ def test_post_run_creates_queued_run(_api_db):
     assert body['job_family'] == 'network_scan'
 
 
+def test_post_run_stores_ai_instruction(_api_db):
+    client = _client_with_session(_api_db['user_id'])
+    payload = {
+        'job_family': 'network_scan',
+        'target_id': _api_db['target_id'],
+        'runtime_profile_id': _api_db['profile_id'],
+        'credential_id': _api_db['credential_id'],
+        'user_id': _api_db['user_id'],
+        'provider': 'openai',
+        'model': 'gpt-5.2',
+        'ai_instruction': '  Check OIDC exposure.  ',
+    }
+
+    response = client.post('/api/runs', json=payload)
+
+    assert response.status_code == 201
+    run_id = response.json()['id']
+    detail = client.get(f'/api/runs/{run_id}')
+    assert detail.status_code == 200
+    snap = detail.json()['execution_snapshot']
+    assert snap.get('ai_instruction') == 'Check OIDC exposure.'
+
+
 def test_post_run_rejects_missing_user(_api_db):
     client = _client_with_session(_api_db['user_id'])
     payload = {

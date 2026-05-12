@@ -94,6 +94,13 @@
       </select>
     </div>
 
+    <div class="form-group">
+      <label for="ai_instruction">Instructions for the AI <span style="font-weight:normal;color:var(--text-muted)">(optional)</span></label>
+      <textarea id="ai_instruction" name="ai_instruction" rows="4" maxlength="16000"
+        placeholder="e.g. Pay special attention to our OIDC / SSO setup, Authentik, and any exposed auth or callback URLs."></textarea>
+      <small style="color:var(--text-muted)">Appended to the scan prompt for both API and CLI runs. Max 16&nbsp;000 characters.</small>
+    </div>
+
     <button type="submit" class="btn btn-primary" id="launch_btn">Launch Scan</button>
   </form>
 </div>

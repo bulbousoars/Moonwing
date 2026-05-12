@@ -244,6 +244,20 @@ failed … canceled … needs_review (where applicable)
 
 ---
 
+## Scheduled runs
+
+- UI: **Schedules** in the sidebar (`/schedules`). Cron uses **five fields** (minute hour day-of-month month day-of-week) interpreted in the **timezone** you set (IANA name, e.g. `America/New_York`).
+- The **worker** (`moonwing-worker`) evaluates due schedules each poll loop, creates **`queued` runs** with the same fields as **Launch Scan**, then processes them like any other run. Keep a **single worker** if you want at-most-once materialization per tick.
+- Dependency: **`croniter`** (declared in `pyproject.toml`).
+
+## SIEM and structured logs
+
+- **HTTP shipping** (optional): set `MOONWING_SIEM_ENABLED=true` and `MOONWING_SIEM_HTTP_URL` to a Logstash **http** input, generic webhook, or other JSON POST endpoint. Optional `MOONWING_SIEM_HTTP_HEADERS_JSON` is a JSON object merged into request headers (e.g. `{"Authorization":"Bearer …"}`).
+- Events: **`log_type=moonwing_audit`** (same fields as in-app audit actions) and **`log_type=moonwing_run`** when a run finishes **completed** or **failed** (includes `run_id`, `job_family`, `finding_count` when known).
+- **JSON stdout** (optional): set `MOONWING_LOG_JSON_TO_STDOUT=true` on **API** and/or **worker** so each log line is one JSON object—easy to collect with **Filebeat**, **Fluent Bit**, or Docker logging drivers and forward to your SIEM.
+
+---
+
 ## Operational encryption note
 
 Synthetic provider keys reside encrypted at-rest only after **`MOONWING_ENCRYPTION_KEY`** is populated (generate per `.env.example`).

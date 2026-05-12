@@ -18,6 +18,7 @@ from sqlalchemy import select
 from moonwing.config import Settings
 from moonwing.db.models import Run
 from moonwing.db.session import build_session_factory
+from moonwing.services.run_schedule_service import materialize_due_schedules
 from moonwing.worker.object_store import MinioObjectStore
 from moonwing.worker.tasks import ObjectStore, enqueue_run, process_next
 
@@ -76,6 +77,11 @@ def poll_once(
     """
     session = session_factory()
     try:
+        mat = materialize_due_schedules(session)
+        session.commit()
+        if mat:
+            logger.info("materialized %d scheduled run(s)", mat)
+
         queued_runs = (
             session.execute(
                 select(Run.id)
@@ -119,15 +125,21 @@ def drain_queue(
 
 def main() -> None:
     """Worker entry point — bootstrap and poll indefinitely."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
+    settings = Settings()
+    if settings.log_json_to_stdout:
+        from moonwing.services.logging_json import configure_json_stdout_logging
+
+        configure_json_stdout_logging()
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        )
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    env = bootstrap()
+    env = bootstrap(settings)
     queue: Queue = Queue()
     poll_interval = 2.0  # seconds
 

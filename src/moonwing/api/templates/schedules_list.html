@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Run schedules - Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Run schedules</h1>
+  <p>Cron-based scans materialized by the worker as queued runs (same pipeline as <a href="/runs/new">Launch Scan</a>).</p>
+  <p><a class="btn btn-primary" href="/schedules/new">New schedule</a></p>
+</div>
+
+{% if error %}
+<div class="probe-result error" style="max-width:960px; margin-bottom:16px;">{{ error }}</div>
+{% endif %}
+
+<div class="table-card" style="max-width:960px">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Cron (UTC wall in TZ)</th>
+        <th>Timezone</th>
+        <th>Next run (UTC)</th>
+        <th>Enabled</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in schedules %}
+      <tr>
+        <td><strong>{{ s.name }}</strong><br><span class="text-muted" style="font-size:0.85em">{{ s.job_family }} · {{ s.provider }} / {{ s.model }}</span></td>
+        <td><code>{{ s.cron_expression }}</code></td>
+        <td>{{ s.timezone }}</td>
+        <td>{{ s.next_run_at }}</td>
+        <td>{% if s.enabled %}yes{% else %}no{% endif %}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/schedules/{{ s.id }}/toggle" style="display:inline">
+            <button type="submit" class="btn btn-secondary btn-sm">{% if s.enabled %}Disable{% else %}Enable{% endif %}</button>
+          </form>
+          <form method="post" action="/schedules/{{ s.id }}/delete" style="display:inline" onsubmit="return confirm('Delete this schedule?');">
+            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">No schedules yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

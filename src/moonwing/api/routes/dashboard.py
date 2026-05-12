@@ -68,7 +68,12 @@ from moonwing.services.sensor_installer import (
 from moonwing.services.run_activity import ACTIVE_RUN_STATUSES, serialize_run_activity
 from moonwing.services.system_updates import apply_system_update, build_git_update_status
 from moonwing.services.targets import normalize_target_metadata
-from moonwing.services.user_origin import describe_user_origin
+from moonwing.services.run_schedule_service import (
+    compute_next_run_utc,
+    validate_cron_expression,
+    validate_timezone,
+)
+from moonwing.worker.clearwing_runner import DEFAULT_AI_INSTRUCTION_MAX_CHARS
 from moonwing.db.models import (
     Artifact,
     AuditEvent,
@@ -80,6 +85,7 @@ from moonwing.db.models import (
     ServiceAccountToken,
     SmtpConfig,
     Run,
+    RunSchedule,
     RuntimeProfileRecord,
     SensorEndpoint,
     SensorEvent,
@@ -366,6 +372,7 @@ def first_run_user_create(
 
 
 def _serialize_run(r: Run) -> dict:
+    snap = r.execution_snapshot or {}
     return {
         'id': str(r.id),
         'job_family': r.job_family,
@@ -377,7 +384,8 @@ def _serialize_run(r: Run) -> dict:
         'credential_id': str(r.credential_id),
         'runtime_profile_id': str(r.runtime_profile_id),
         'target_id': str(r.target_id) if r.target_id else None,
-        'execution_snapshot': r.execution_snapshot or {},
+        'execution_snapshot': snap,
+        'ai_instruction': snap.get('ai_instruction'),
         'created_at': r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -861,6 +869,7 @@ def run_create(
     provider: str = Form('openai'),
     model: str = Form('gpt-5.5'),
     execution_mode: str = Form('api'),
+    ai_instruction: str = Form(''),
 ):
     _require(request, 'launch_scan')
     # In API mode, the credential's provider must match the run's provider —
@@ -880,6 +889,11 @@ def run_create(
                 error=f"Credential '{cred.display_name}' is for {cred.provider}, but the selected provider is {provider}. "
                       f"Pick a {provider} credential, switch to CLI execution mode, or change the provider.",
             )
+    exec_snap: dict = {}
+    instr = (ai_instruction or '').strip()
+    if instr:
+        exec_snap['ai_instruction'] = instr[:DEFAULT_AI_INSTRUCTION_MAX_CHARS]
+
     run = Run(
         job_family=job_family,
         status='queued',
@@ -890,11 +904,22 @@ def run_create(
         provider=provider,
         model=model,
         execution_mode=execution_mode,
-        execution_snapshot={},
+        execution_snapshot=exec_snap,
     )
     db.add(run)
     db.flush()
-    audit(db, action='scan_launch', resource_type='run', actor_user_id=UUID(request.state.current_user['id']), resource_id=str(run.id), metadata={'job_family': job_family, 'target_id': target_id})
+    audit(
+        db,
+        action='scan_launch',
+        resource_type='run',
+        actor_user_id=UUID(request.state.current_user['id']),
+        resource_id=str(run.id),
+        metadata={
+            'job_family': job_family,
+            'target_id': target_id,
+            'has_ai_instruction': bool(instr),
+        },
+    )
     db.commit()
     return RedirectResponse(url=f'/runs/{run.id}', status_code=303)
 
@@ -921,6 +946,172 @@ def run_detail_page(run_id: UUID, request: Request, db: Session = Depends(get_db
     ]
     return _render(request, 'run_detail.html', {'active': 'runs', 'run': run_data,
     })
+
+
+# ── Run schedules (cron → queued runs, worker materializes) ───────────
+
+
+def _schedule_form_context(db: Session) -> dict:
+    targets = [
+        {'id': str(t.id), 'display_name': t.display_name, 'target_type': t.target_type}
+        for t in db.query(Target).order_by(Target.display_name).all()
+    ]
+    users = [
+        {'id': str(u.id), 'display_name': u.display_name, 'email': u.email}
+        for u in db.query(User).order_by(User.display_name).all()
+    ]
+    credentials = [
+        {'id': str(c.id), 'display_name': c.display_name, 'provider': c.provider}
+        for c in db.query(Credential).order_by(Credential.display_name).all()
+    ]
+    profiles = [
+        {'id': str(p.id), 'name': p.name}
+        for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.name).all()
+    ]
+    return {
+        'targets': targets,
+        'users': users,
+        'credentials': credentials,
+        'profiles': profiles,
+    }
+
+
+def _render_schedule_form(request: Request, db: Session, *, error: str, status_code: int = 200):
+    ctx = _schedule_form_context(db)
+    ctx['active'] = 'schedules'
+    ctx['error'] = error
+    ctx.setdefault('current_user', getattr(request.state, 'current_user', None))
+    return templates.TemplateResponse(request, 'schedule_form.html', ctx, status_code=status_code)
+
+
+@router.get('/schedules', response_class=HTMLResponse)
+def schedules_list_page(request: Request, db: Session = Depends(get_db)):
+    _require(request, 'launch_scan')
+    rows = db.query(RunSchedule).order_by(RunSchedule.name).all()
+    schedules = []
+    for s in rows:
+        schedules.append(
+            {
+                'id': str(s.id),
+                'name': s.name,
+                'cron_expression': s.cron_expression,
+                'timezone': s.timezone,
+                'next_run_at': s.next_run_at.isoformat() if s.next_run_at else '',
+                'enabled': s.enabled,
+                'job_family': s.job_family,
+                'provider': s.provider,
+                'model': s.model,
+            }
+        )
+    return _render(request, 'schedules_list.html', {'active': 'schedules', 'schedules': schedules, 'error': ''})
+
+
+@router.get('/schedules/new', response_class=HTMLResponse)
+def schedules_new_page(request: Request, db: Session = Depends(get_db)):
+    _require(request, 'launch_scan')
+    return _render_schedule_form(request, db, error='')
+
+
+@router.post('/schedules/new')
+def schedules_create(
+    request: Request,
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+    cron_expression: str = Form(...),
+    timezone: str = Form(...),
+    job_family: str = Form(...),
+    target_id: str = Form(''),
+    user_id: str = Form(...),
+    credential_id: str = Form(...),
+    runtime_profile_id: str = Form(...),
+    provider: str = Form(...),
+    model: str = Form(...),
+    execution_mode: str = Form('api'),
+    ai_instruction: str = Form(''),
+):
+    _require(request, 'launch_scan')
+    if not target_id.strip():
+        return _render_schedule_form(request, db, error='Target is required for scheduled scans.', status_code=400)
+    if execution_mode == 'api':
+        cred = db.query(Credential).filter(Credential.id == UUID(credential_id)).first()
+        if cred is None:
+            return _render_schedule_form(request, db, error='Selected credential not found.', status_code=400)
+        if cred.provider != provider and provider != 'ollama':
+            return _render_schedule_form(
+                request,
+                db,
+                error=f"Credential is for {cred.provider}, but provider is {provider}.",
+                status_code=400,
+            )
+    try:
+        cron = validate_cron_expression(cron_expression)
+        tz = validate_timezone(timezone)
+    except ValueError as exc:
+        return _render_schedule_form(request, db, error=str(exc), status_code=400)
+
+    now = datetime.now(timezone.utc)
+    next_at = compute_next_run_utc(cron_expression=cron, timezone_name=tz, anchor_utc=now)
+    instr = None
+    if ai_instruction and ai_instruction.strip():
+        instr = ai_instruction.strip()[:DEFAULT_AI_INSTRUCTION_MAX_CHARS]
+
+    sch = RunSchedule(
+        name=name.strip()[:255],
+        enabled=True,
+        cron_expression=cron,
+        timezone=tz,
+        user_id=UUID(user_id),
+        credential_id=UUID(credential_id),
+        runtime_profile_id=UUID(runtime_profile_id),
+        target_id=UUID(target_id),
+        job_family=job_family,
+        provider=provider,
+        model=model.strip()[:128],
+        execution_mode=execution_mode,
+        ai_instruction=instr,
+        next_run_at=next_at,
+    )
+    db.add(sch)
+    db.flush()
+    audit(
+        db,
+        action='schedule_create',
+        resource_type='run_schedule',
+        actor_user_id=UUID(request.state.current_user['id']),
+        resource_id=str(sch.id),
+        metadata={'name': sch.name, 'cron': cron},
+    )
+    db.commit()
+    return RedirectResponse(url='/schedules', status_code=303)
+
+
+@router.post('/schedules/{schedule_id}/toggle')
+def schedules_toggle(schedule_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'launch_scan')
+    sch = db.get(RunSchedule, schedule_id)
+    if not sch:
+        raise HTTPException(status_code=404, detail='Schedule not found')
+    sch.enabled = not sch.enabled
+    db.commit()
+    return RedirectResponse(url='/schedules', status_code=303)
+
+
+@router.post('/schedules/{schedule_id}/delete')
+def schedules_delete(schedule_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'launch_scan')
+    sch = db.get(RunSchedule, schedule_id)
+    if not sch:
+        raise HTTPException(status_code=404, detail='Schedule not found')
+    db.delete(sch)
+    audit(
+        db,
+        action='schedule_delete',
+        resource_type='run_schedule',
+        actor_user_id=UUID(request.state.current_user['id']),
+        resource_id=str(schedule_id),
+    )
+    db.commit()
+    return RedirectResponse(url='/schedules', status_code=303)
 
 
 # ── Findings ───────────────────────────────────────────────────────────

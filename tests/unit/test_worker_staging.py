@@ -194,6 +194,26 @@ class TestStageRun:
 
         assert staged.credential_ref == "vault://openai/test-key"
 
+    def test_stage_run_propagates_ai_instruction_into_command(
+        self, session, object_store, seed_user, seed_credential, seed_runtime_profile, seed_target,
+    ):
+        run = _make_queued_run(
+            session,
+            user=seed_user,
+            credential=seed_credential,
+            profile=seed_runtime_profile,
+            target=seed_target,
+            execution_snapshot={"ai_instruction": "Prioritize TLS 1.2 downgrade issues."},
+        )
+
+        staged = stage_run(
+            session=session, run_id=run.id, object_store=object_store,
+        )
+
+        prompt = staged.command[-1]
+        assert "TLS 1.2" in prompt
+        assert "Additional instructions from the operator" in prompt
+
     def test_stage_run_resolves_artifacts_with_provenance(
         self, session, object_store, seed_user, seed_credential, seed_runtime_profile,
         seed_target, seed_artifact,

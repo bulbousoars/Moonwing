@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from moonwing.worker.clearwing_runner import _get_prompt
+from moonwing.worker.clearwing_runner import _get_prompt, append_operator_ai_instruction
 
 logger = logging.getLogger("moonwing.worker.api_executor")
 
@@ -215,12 +215,16 @@ def execute_via_api(
     job_family: str,
     source_ref: str,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    ai_instruction: str | None = None,
 ) -> APIExecutionResult:
     """Execute a security scan via direct API call.
 
     Returns an APIExecutionResult with the parsed findings payload.
     """
-    prompt = _get_prompt(job_family, source_ref)
+    prompt = append_operator_ai_instruction(
+        _get_prompt(job_family, source_ref),
+        ai_instruction,
+    )
 
     logger.info("API execution: provider=%s model=%s source=%s", provider, model, source_ref)
 

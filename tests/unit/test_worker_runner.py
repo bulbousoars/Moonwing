@@ -1,6 +1,27 @@
 import pytest
 
-from moonwing.worker.clearwing_runner import ClearwingCommandError, build_clearwing_command
+from moonwing.worker.clearwing_runner import ClearwingCommandError, append_operator_ai_instruction, build_clearwing_command
+
+
+def test_append_operator_ai_instruction_truncates():
+    long = "x" * 100
+    out = append_operator_ai_instruction("base", long, max_chars=5)
+    assert "xxxxx" in out
+    assert "…(truncated)" in out
+
+
+def test_build_command_includes_ai_instruction_in_prompt():
+    command = build_clearwing_command(
+        job_family="source_hunt",
+        input_kind="repo",
+        source_ref="https://github.com/example/repo.git",
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        ai_instruction="Focus on OIDC callbacks.",
+    )
+    prompt = command[command.index("-p") + 1]
+    assert "OIDC" in prompt
+    assert "Additional instructions from the operator" in prompt
 
 
 def test_build_command_for_anthropic_network_scan():

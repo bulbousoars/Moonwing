@@ -32,7 +32,12 @@ class Settings(BaseSettings):
     oidc_default_role: str = 'viewer'
     sensor_enrollment_token: str = ''
 
-    # ── In-app upgrades (admin only) ─────────────────────────────────
+    # ── SIEM / observability ───────────────────────────────────────────
+    siem_enabled: bool = False
+    siem_http_url: str = ''
+    siem_http_headers_json: str = ''
+    siem_http_timeout_seconds: float = 3.0
+    log_json_to_stdout: bool = False
     update_repo_path: str = ''
     update_git_remote: str = 'origin'
     update_git_branch: str = 'main'
