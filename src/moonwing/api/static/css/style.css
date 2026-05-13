@@ -213,6 +213,11 @@ a:hover { color: var(--accent-hover); }
   z-index: 10;
 }
 
+/* Keep nav sections from shrinking when the column is tight (avoids clipped links). */
+.sidebar > .sidebar-section {
+  flex-shrink: 0;
+}
+
 /* Brand / logo area */
 .sidebar-brand {
   padding: 1.25rem 1rem 0.75rem;
