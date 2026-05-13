@@ -10,8 +10,6 @@
 <div class="probe-result error" style="max-width:760px; margin-bottom:16px;">{{ error }}</div>
 {% endif %}
 
-{% include "_cli_tools_probe.html" %}
-
 <div class="detail-card" style="max-width:760px">
   <form method="post" action="{% if schedule %}/schedules/{{ schedule.id }}/edit{% else %}/schedules/new{% endif %}">
     <div class="form-group">

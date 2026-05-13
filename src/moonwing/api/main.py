@@ -12,6 +12,7 @@ from moonwing.api.routes.credentials import router as credentials_router
 from moonwing.api.routes.dashboard import router as dashboard_router
 from moonwing.api.routes.runs import router as runs_router
 from moonwing.api.routes.sensors import router as sensor_router
+from moonwing.api.host_terminal import register_host_terminal
 from moonwing.api.routes.system_updates_api import router as system_updates_router
 from moonwing.db.models import User
 from moonwing.services.ai_provider_probe import log_ai_cli_boot_diagnostics
@@ -22,6 +23,8 @@ from moonwing.services.permissions import permission_for_request, require_role
 _BASE = Path(__file__).resolve().parent
 
 app = FastAPI(title='moonwing')
+
+register_host_terminal(app)
 
 app.mount('/static', StaticFiles(directory=_BASE / 'static'), name='static')
 

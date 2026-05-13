@@ -16,9 +16,10 @@
   })();
   </script>
   <link rel="icon" type="image/png" href="/static/img/favicon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=20260512-credential-cli-ui">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260512-host-terminal">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;550;600;650;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
 <div class="layout">
@@ -105,6 +106,12 @@
           <a href="/system/updates" class="{% if active == 'system_updates' %}active{% endif %}">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3v3M10 14v3M3 10h3M14 10h3"/><path d="M5.6 5.6l2.1 2.1M12.3 12.3l2.1 2.1M5.6 14.4l2.1-2.1M12.3 7.7l2.1-2.1"/></svg>
             Updates
+          </a>
+        </li>
+        <li>
+          <a href="/system/host-terminal" class="{% if active == 'system_host_terminal' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 5h12v10H4z"/><path d="M4 8h12"/><path d="M7 11h1M10 11h3"/></svg>
+            Host terminal
           </a>
         </li>
         <li>

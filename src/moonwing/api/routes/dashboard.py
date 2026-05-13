@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from moonwing.api.deps import get_db
 from moonwing.api.deps import _get_settings
+from moonwing.api.host_terminal import terminal_supported
 from moonwing.services.ai_provider_probe import (
     PROVIDER_CLI_BINARIES,
     PROVIDER_DEFAULT_MODELS,
@@ -884,6 +885,23 @@ def system_updates_reboot(request: Request, db: Session = Depends(get_db), confi
     return RedirectResponse(url=f'/system/updates?reboot={"1" if ok else "0"}', status_code=303)
 
 
+@router.get('/system/host-terminal', response_class=HTMLResponse)
+def system_host_terminal_page(request: Request):
+    _require(request, 'system_updates')
+    settings = _get_settings()
+    return _render(
+        request,
+        'system_host_terminal.html',
+        {
+            'active': 'system_host_terminal',
+            'cli_tool_report': discover_ai_cli_tools(settings, process_label='moonwing-api'),
+            'web_terminal_enabled': settings.web_terminal_enabled,
+            'web_terminal_shell': settings.web_terminal_shell,
+            'web_terminal_supported': terminal_supported(),
+        },
+    )
+
+
 def _build_run_form_context(request: Request, db: Session, *, target: str = '', error: str = '') -> dict:
     targets = [
         {'id': str(t.id), 'display_name': t.display_name, 'target_type': t.target_type}
@@ -920,7 +938,6 @@ def _build_run_form_context(request: Request, db: Session, *, target: str = '', 
         'cli_binaries': PROVIDER_CLI_BINARIES,
         'initial_provider': initial_provider,
         'error': error,
-        'cli_tool_report': discover_ai_cli_tools(_get_settings(), process_label='moonwing-api'),
     }
 
 
@@ -1050,7 +1067,6 @@ def _schedule_form_context(db: Session) -> dict:
         'users': users,
         'credentials': credentials,
         'profiles': profiles,
-        'cli_tool_report': discover_ai_cli_tools(_get_settings(), process_label='moonwing-api'),
     }
 
 

@@ -140,3 +140,19 @@ def test_system_updates_apply_success_redirect(monkeypatch, upd_client):
     res = client.post('/system/updates/apply', data={'confirm': 'APPLY'}, follow_redirects=False)
     assert res.status_code == 303
     assert 'applied=1' in res.headers.get('location', '')
+
+
+def test_host_terminal_page_forbidden_viewer(upd_client):
+    app, ids = upd_client
+    client = _session_client(app, ids['viewer'], role='viewer')
+    res = client.get('/system/host-terminal')
+    assert res.status_code == 403
+
+
+def test_host_terminal_page_ok_admin(upd_client):
+    app, ids = upd_client
+    client = _session_client(app, ids['admin'])
+    res = client.get('/system/host-terminal')
+    assert res.status_code == 200
+    assert b'Host terminal' in res.content or b'host terminal' in res.content.lower()
+    assert b'Local AI CLI detection' in res.content

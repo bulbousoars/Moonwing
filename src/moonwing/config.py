@@ -54,3 +54,6 @@ class Settings(BaseSettings):
     # JSON argv for host reboot from Updates (empty = hidden). Example:
     # '["sudo","/sbin/shutdown","-r","now"]'
     admin_reboot_argv_json: str = ''
+    # In-browser PTY on the API host (POSIX + forkpty only). High privilege — keep off unless needed.
+    web_terminal_enabled: bool = False
+    web_terminal_shell: str = '/bin/bash'
