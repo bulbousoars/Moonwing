@@ -83,7 +83,7 @@
     <div class="form-group" id="credential_group">
       <label>Credential</label>
       <input type="hidden" id="credential_id" name="credential_id" value="">
-      <div id="credential_display" style="padding:8px 10px; border:1px solid var(--border, #ccc); border-radius:4px; background:var(--bg-muted, #f7f7f7);"></div>
+      <div id="credential_display" class="credential-display" role="status" aria-live="polite"></div>
       <small id="credential_hint" style="color:var(--text-muted)"></small>
     </div>
 
@@ -201,7 +201,7 @@
     if (match) {
       credInput.value = match.id;
       display.textContent = match.display_name + ' (' + match.provider + ')';
-      display.style.color = '';
+      display.classList.remove('credential-display--missing');
       hint.textContent = (mode === 'cli')
         ? 'Auto-selected for ' + provider + '. CLI mode authenticates via your local login; this credential is recorded for audit.'
         : 'Auto-selected for ' + provider + '. API mode will use this credential to authenticate.';
@@ -210,7 +210,7 @@
     } else {
       credInput.value = '';
       display.textContent = 'No ' + provider + ' credential available';
-      display.style.color = 'var(--danger, #c0392b)';
+      display.classList.add('credential-display--missing');
       const modeLabel = (mode === 'cli') ? 'CLI' : 'API';
       hint.innerHTML = 'No <strong>' + provider + '</strong> credential exists for ' + modeLabel + ' mode. <a href="/credentials/new">Add one</a>, or pick a different provider/mode.';
       launchBtn.disabled = true;

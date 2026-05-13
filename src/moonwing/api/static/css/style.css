@@ -2027,6 +2027,83 @@ tbody tr:last-child td { border-bottom: none; }
   color: var(--text-muted);
 }
 
+/* Launch scan — credential readout (must match theme; avoid light gray fallbacks) */
+.credential-display {
+  padding: 0.5rem 0.75rem;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.credential-display--missing {
+  color: var(--critical);
+  border-color: color-mix(in srgb, var(--critical) 35%, var(--border));
+  background: color-mix(in srgb, var(--critical) 8%, var(--bg-input));
+}
+
+/* CLI probe table — status + install helpers */
+.cli-probe-ok {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.cli-probe-miss {
+  color: var(--critical);
+  font-weight: 600;
+}
+
+.cli-tools-table .cli-install-cell {
+  vertical-align: top;
+  min-width: 220px;
+}
+
+.cli-install-docs {
+  display: inline-block;
+  margin-bottom: 0.45rem;
+  font-size: 0.78rem;
+}
+
+.cli-install-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.cli-install-row:last-child {
+  margin-bottom: 0;
+}
+
+.cli-install-label {
+  flex: 0 0 100%;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.cli-install-snippet {
+  flex: 1 1 140px;
+  min-width: 0;
+  display: block;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.72rem;
+  border-radius: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.cli-copy-btn {
+  flex: 0 0 auto;
+}
+
 .form-help {
   color: var(--text-muted);
   font-size: 0.78rem;

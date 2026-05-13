@@ -88,6 +88,31 @@ CLI_PROBE_WORKER_NOTE = (
     "for the worker's own probe line."
 )
 
+# Vendor install paths change — keep URLs current; commands are typical npm/brew flows.
+CLI_INSTALL_META: dict[str, dict[str, Any]] = {
+    "claude": {
+        "docs_url": "https://docs.anthropic.com/en/docs/claude-code/setup",
+        "commands": [
+            ("npm (global)", "npm install -g @anthropic-ai/claude-code"),
+            ("npx (no global install)", "npx @anthropic-ai/claude-code --version"),
+        ],
+    },
+    "codex": {
+        "docs_url": "https://developers.openai.com/codex/quickstart",
+        "commands": [
+            ("npm (global)", "npm install -g @openai/codex"),
+            ("Homebrew (macOS)", "brew install --cask codex"),
+        ],
+    },
+    "gemini": {
+        "docs_url": "https://google-gemini.github.io/gemini-cli/docs/get-started/",
+        "commands": [
+            ("npm (global)", "npm install -g @google/gemini-cli"),
+            ("Homebrew", "brew install gemini-cli"),
+        ],
+    },
+}
+
 
 def cli_binary_executable(path: str) -> bool:
     """True if ``path`` is an executable we can invoke (PATH lookup or absolute path)."""
@@ -139,12 +164,24 @@ def discover_ai_cli_tools(
     tools: list[dict[str, Any]] = []
     for slot in slots:
         cfg = str(slot["configured_value"] or "").strip() or slot["id"]
+        tid = str(slot["id"])
+        meta = CLI_INSTALL_META.get(tid, {})
+        docs = str(meta.get("docs_url") or "").strip()
+        cmds_raw = meta.get("commands") or []
+        install_commands: list[dict[str, str]] = []
+        for row in cmds_raw:
+            if isinstance(row, (list, tuple)) and len(row) == 2:
+                label, command = str(row[0]), str(row[1])
+                if label and command:
+                    install_commands.append({"label": label, "command": command})
         tools.append(
             {
                 **slot,
                 "configured_value": cfg,
                 "resolved_path": resolve_cli_binary(cfg),
                 "available": cli_binary_executable(cfg),
+                "install_docs_url": docs,
+                "install_commands": install_commands,
             }
         )
     return {

@@ -13,6 +13,16 @@ def test_launch_form_explains_network_scan_and_source_hunt():
     assert "What is wrong in the code" in template
     assert 'value="network_scan"' in template
     assert 'value="source_hunt"' in template
+    assert 'class="credential-display"' in template
+
+
+def test_cli_tools_probe_offers_copy_install_and_docs():
+    template = (ROOT / "src/moonwing/api/templates/_cli_tools_probe.html").read_text(encoding="utf-8")
+
+    assert "data-copy-cmd" in template
+    assert "cli-copy-btn" in template
+    assert "Install help" in template
+    assert "Vendor docs" in template
 
 
 def test_target_form_hints_which_job_family_to_use():

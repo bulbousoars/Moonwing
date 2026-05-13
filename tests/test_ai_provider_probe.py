@@ -77,6 +77,11 @@ def test_discover_ai_cli_tools_shape(monkeypatch):
     assert len(r["tools"]) == 3
     assert all(not t["available"] for t in r["tools"])
     assert r["tools"][0]["id"] == "claude"
+    for t in r["tools"]:
+        assert "install_docs_url" in t
+        assert "install_commands" in t
+        assert isinstance(t["install_commands"], list)
+        assert len(t["install_commands"]) >= 1
 
 
 def test_enrich_tools_with_boot_smoke_marks_exec_ok(monkeypatch):
