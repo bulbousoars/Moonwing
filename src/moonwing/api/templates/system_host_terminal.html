@@ -6,7 +6,7 @@
 {% block content %}
 <div class="page-header">
   <h1>Host terminal &amp; local CLIs</h1>
-  <p>Run package installs on the <strong>same host as the Moonwing API</strong> (where worker CLIs resolve on <code>PATH</code>). Copy commands below, or use the in-browser shell when enabled.</p>
+  <p>Run package installs on the <strong>same host as the Moonwing API</strong> (where worker CLIs resolve on <code>PATH</code>). Copy commands below, or use the in-browser shell when it is enabled.</p>
 </div>
 
 {% if web_terminal_enabled and web_terminal_supported %}
@@ -18,13 +18,26 @@
 <div class="detail-card" style="max-width:900px;margin-bottom:1.25rem;">
   <h2 style="margin-top:0;font-size:1.05rem;">In-browser shell</h2>
   {% if not web_terminal_supported %}
-  <p class="form-help" style="margin:0;">Web terminal is not available on this platform (Windows hosts have no <code>forkpty</code>). Use SSH or WSL on the manager host, or run installs inside your Linux deployment.</p>
-  {% elif not web_terminal_enabled %}
-  <p class="form-help" style="margin:0;">Set <code>MOONWING_WEB_TERMINAL_ENABLED=true</code> on the API host and restart the API. Optional: <code>MOONWING_WEB_TERMINAL_SHELL</code> (default <code>/bin/bash</code>, currently <code>{{ web_terminal_shell }}</code>).</p>
+  <p class="form-help" style="margin:0 0 0.75rem;">Web terminal is not available on this platform (Windows hosts have no <code>forkpty</code>). Use SSH or WSL on the manager host, or run installs inside your Linux deployment.</p>
+  <div class="host-terminal-panel host-terminal-panel--static">
+    <div class="host-terminal-hint">No PTY bridge on this OS</div>
+    <pre class="host-terminal-fallback" aria-label="Unavailable terminal placeholder">$ # In-browser shell requires Linux (or another POSIX host) with forkpty support.
+$ # SSH to your Moonwing manager and run installs there.</pre>
+  </div>
   {% else %}
-  <p class="form-help" style="margin:0 0 0.75rem;">Shell: <code>{{ web_terminal_shell }}</code> · WebSocket <code>/ws/system/terminal</code></p>
-  <div class="host-terminal-panel">
-    <div class="host-terminal-hint">Requires <strong>system updates</strong> permission. Keystrokes are sent to the host PTY over a TLS-backed session in production.</div>
+  {% if not web_terminal_enabled %}
+  <p class="form-help" style="margin:0 0 0.75rem;">The box below is a <strong>read-only preview</strong>. To open a live shell on this host, set <code>MOONWING_WEB_TERMINAL_ENABLED=true</code> and restart the API. Optional: <code>MOONWING_WEB_TERMINAL_SHELL</code> (default <code>/bin/bash</code>, currently <code>{{ web_terminal_shell }}</code>).</p>
+  {% else %}
+  <p class="form-help" style="margin:0 0 0.75rem;">Live shell: <code>{{ web_terminal_shell }}</code> · WebSocket <code>/ws/system/terminal</code></p>
+  {% endif %}
+  <div class="host-terminal-panel{% if not web_terminal_enabled %} host-terminal-panel--preview{% endif %}">
+    <div class="host-terminal-hint">
+      {% if web_terminal_enabled %}
+      Requires <strong>system updates</strong> permission. Keystrokes are sent to the host PTY over a TLS-backed session in production.
+      {% else %}
+      Preview only — keystrokes are not sent to the host until the web shell is enabled.
+      {% endif %}
+    </div>
     <div id="host-terminal" aria-label="Host shell"></div>
   </div>
   {% endif %}
@@ -35,17 +48,24 @@
   {% include "_cli_tools_probe.html" %}
 </div>
 
-{% if web_terminal_enabled and web_terminal_supported %}
+{% if web_terminal_supported %}
+<script>
+window.__MOONWING_HOST_TERMINAL = {
+  enabled: {{ web_terminal_enabled|tojson }},
+  shell: {{ web_terminal_shell|tojson }}
+};
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.9.0/lib/addon-fit.min.js" crossorigin="anonymous"></script>
 <script>
 (function() {
   var el = document.getElementById('host-terminal');
+  var cfg = window.__MOONWING_HOST_TERMINAL || {};
   if (!el || typeof Terminal === 'undefined') return;
-  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  var wsUrl = proto + '//' + location.host + '/ws/system/terminal';
+
   var term = new Terminal({
-    cursorBlink: true,
+    cursorBlink: !!cfg.enabled,
+    disableStdin: !cfg.enabled,
     fontFamily: 'JetBrains Mono, ui-monospace, monospace',
     fontSize: 13,
     theme: {
@@ -57,15 +77,39 @@
   var fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(el);
-  function sendResize(ws) {
+  function fitAndMaybeResize(ws) {
     try {
       fitAddon.fit();
-      ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', rows: term.rows, cols: term.cols }));
+      }
     } catch (err) {}
   }
+  fitAndMaybeResize(null);
+
+  if (!cfg.enabled) {
+    term.writeln('\x1b[33m\x1b[1mMoonwing web shell is disabled\x1b[0m');
+    term.writeln('');
+    term.writeln('On this API host, set:');
+    term.writeln('  \x1b[36mMOONWING_WEB_TERMINAL_ENABLED=true\x1b[0m');
+    term.writeln('then restart the \x1b[1mmoonwing-api\x1b[0m service (systemd/Docker).');
+    term.writeln('');
+    term.writeln('Configured shell when live: \x1b[36m' + String(cfg.shell || '/bin/bash') + '\x1b[0m');
+    term.writeln('');
+    term.writeln('\x1b[90m(This pane is read-only until enabled.)\x1b[0m');
+    var rtimer;
+    window.addEventListener('resize', function() {
+      clearTimeout(rtimer);
+      rtimer = setTimeout(function() { fitAndMaybeResize(null); }, 120);
+    });
+    return;
+  }
+
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var wsUrl = proto + '//' + location.host + '/ws/system/terminal';
   var ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = function() { sendResize(ws); };
+  ws.onopen = function() { fitAndMaybeResize(ws); };
   ws.onmessage = function(ev) {
     if (typeof ev.data === 'string') {
       try {
@@ -93,9 +137,9 @@
   var resizeTimer;
   window.addEventListener('resize', function() {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function() { sendResize(ws); }, 120);
+    resizeTimer = setTimeout(function() { fitAndMaybeResize(ws); }, 120);
   });
-  setTimeout(function() { sendResize(ws); }, 50);
+  setTimeout(function() { fitAndMaybeResize(ws); }, 50);
 })();
 </script>
 {% endif %}
