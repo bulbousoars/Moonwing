@@ -13,6 +13,7 @@ from .run_schedule import RunSchedule
 from .service_account_token import ServiceAccountToken
 from .sensor import SensorEndpoint, SensorEvent, SensorTask
 from .smtp_config import SmtpConfig
+from .system_setting import SystemSetting
 from .worker_diagnostic import WorkerDiagnostic
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     'SensorEvent',
     'SensorTask',
     'SmtpConfig',
+    'SystemSetting',
     'Target',
     'User',
     'WorkerDiagnostic',

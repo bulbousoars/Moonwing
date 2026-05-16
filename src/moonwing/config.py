@@ -55,5 +55,6 @@ class Settings(BaseSettings):
     # '["sudo","/sbin/shutdown","-r","now"]'
     admin_reboot_argv_json: str = ''
     # In-browser PTY on the API host (POSIX + forkpty only). High privilege — keep off unless needed.
+    # When no DB row exists, this env default applies; the UI can persist enable/disable in `system_setting`.
     web_terminal_enabled: bool = False
     web_terminal_shell: str = '/bin/bash'

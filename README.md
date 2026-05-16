@@ -44,7 +44,7 @@ Fill in at least **`MOONWING_SESSION_SECRET`**, **`MOONWING_ENCRYPTION_KEY`**, a
 
 From your own PC, visit **`http://THE_SERVER_IP:8000`** (replace with your server’s IP or hostname). Finish the setup screens.
 
-Production: put **HTTPS** in front with your usual reverse proxy.
+Production: put **HTTPS** in front with your usual reverse proxy. If you use **System → CLI & terminal**, the proxy must forward WebSockets for `/ws/system/terminal` (e.g. nginx: `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";`).
 
 ### B) Put a sensor on a Windows PC (easy)
 

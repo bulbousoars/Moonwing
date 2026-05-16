@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from moonwing.api.deps import get_db
 from moonwing.api.deps import _get_settings
-from moonwing.api.host_terminal import terminal_supported
+from moonwing.services.web_terminal_status import build_web_terminal_status, terminal_supported
 from moonwing.services.ai_provider_probe import (
     PROVIDER_CLI_BINARIES,
     PROVIDER_DEFAULT_MODELS,
@@ -82,6 +82,7 @@ from moonwing.services.run_schedule_service import (
     validate_cron_expression,
     validate_timezone,
 )
+from moonwing.services.system_setting import set_web_terminal_enabled
 from moonwing.worker.clearwing_runner import DEFAULT_AI_INSTRUCTION_MAX_CHARS
 from moonwing.db.models import (
     Artifact,
@@ -886,20 +887,81 @@ def system_updates_reboot(request: Request, db: Session = Depends(get_db), confi
 
 
 @router.get('/system/host-terminal', response_class=HTMLResponse)
-def system_host_terminal_page(request: Request):
+def system_host_terminal_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    shell: str | None = Query(None),
+):
     _require(request, 'system_updates')
     settings = _get_settings()
+    status = build_web_terminal_status(db, settings)
+    shell_notice: str | None = None
+    if shell == 'enabled':
+        shell_notice = 'Live shell enabled. The terminal below will connect when ready.'
+    elif shell == 'disabled':
+        shell_notice = 'Live shell disabled. Existing WebSocket sessions are closed on reconnect.'
+    elif shell == 'env_default':
+        shell_notice = 'Cleared database override — using MOONWING_WEB_TERMINAL_ENABLED from the environment.'
     return _render(
         request,
         'system_host_terminal.html',
         {
             'active': 'system_host_terminal',
             'cli_tool_report': discover_ai_cli_tools(settings, process_label='moonwing-api'),
-            'web_terminal_enabled': settings.web_terminal_enabled,
-            'web_terminal_shell': settings.web_terminal_shell,
-            'web_terminal_supported': terminal_supported(),
+            'web_terminal_enabled': status['enabled_effective'],
+            'web_terminal_env_default': status['env_default'],
+            'web_terminal_db_override': status['db_override'],
+            'web_terminal_shell': status['shell_configured'],
+            'web_terminal_shell_resolved': status['shell_resolved'],
+            'web_terminal_supported': status['supported'],
+            'web_terminal_ready': status['ready'],
+            'web_terminal_blockers': status['blockers'],
+            'web_terminal_db_settings_available': status['db_settings_available'],
+            'shell_notice': shell_notice,
         },
     )
+
+
+@router.post('/system/host-terminal/web-shell')
+def system_host_terminal_web_shell_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    action: str = Form(...),
+):
+    _require(request, 'system_updates')
+    if not terminal_supported():
+        raise HTTPException(status_code=400, detail="In-browser shell is not supported on this host OS")
+    from moonwing.services.web_terminal_status import system_setting_table_available
+
+    if not system_setting_table_available(db):
+        raise HTTPException(
+            status_code=503,
+            detail="Database migration required: run `alembic upgrade head` to create system_setting.",
+        )
+    raw = (action or "").strip().lower()
+    if raw not in {"enable", "disable", "env_default"}:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    if raw == "enable":
+        set_web_terminal_enabled(db, True)
+        meta = {"enabled": True}
+    elif raw == "disable":
+        set_web_terminal_enabled(db, False)
+        meta = {"enabled": False}
+    else:
+        set_web_terminal_enabled(db, None)
+        meta = {"cleared_db_override": True}
+    audit(
+        db,
+        action="system_web_terminal_toggle",
+        resource_type="system",
+        actor_user_id=UUID(request.state.current_user["id"]),
+        resource_id="web_terminal",
+        outcome="success",
+        metadata={"action": raw, **meta},
+    )
+    db.commit()
+    query = {"enable": "enabled", "disable": "disabled", "env_default": "env_default"}[raw]
+    return RedirectResponse(url=f"/system/host-terminal?shell={query}", status_code=303)
 
 
 def _build_run_form_context(request: Request, db: Session, *, target: str = '', error: str = '') -> dict:

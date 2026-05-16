@@ -43,3 +43,5 @@ def test_system_host_terminal_template_wires_xterm_when_enabled():
     assert "/ws/system/terminal" in template
     assert "_cli_tools_probe.html" in template
     assert "FitAddon.FitAddon" in template
+    assert "live:" in template
+    assert "/system/host-terminal/web-shell" in template

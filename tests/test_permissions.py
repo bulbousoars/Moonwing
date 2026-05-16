@@ -40,4 +40,5 @@ def test_api_paths_map_to_least_privilege_permissions():
     assert permission_for_request("/api/credentials/test", "POST") == "manage_credentials"
     assert permission_for_request("/api/users", "GET") == "manage_users"
     assert permission_for_request("/api/system/updates/status", "GET") == "system_updates"
+    assert permission_for_request("/api/system/terminal/status", "GET") == "system_updates"
     assert permission_for_request("/findings", "GET") is None

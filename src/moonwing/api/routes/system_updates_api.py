@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from moonwing.api.deps import _get_settings, get_db
 from moonwing.services.iam import audit
 from moonwing.services.system_updates import apply_system_update, build_git_update_status
+from moonwing.services.web_terminal_status import build_web_terminal_status
 
 router = APIRouter()
 
@@ -20,6 +21,12 @@ router = APIRouter()
 def api_updates_status():
     gs = build_git_update_status(_get_settings())
     return asdict(gs)
+
+
+@router.get('/terminal/status')
+def api_terminal_status(db: Session = Depends(get_db)):
+    """Whether the in-browser host PTY can connect (for CLI & terminal page)."""
+    return build_web_terminal_status(db, _get_settings())
 
 
 class ApplyUpdatesBody(BaseModel):

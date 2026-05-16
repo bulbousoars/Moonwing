@@ -2153,6 +2153,14 @@ tbody tr:last-child td { border-bottom: none; }
   border: 0;
 }
 
+.host-terminal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
 .host-terminal-risk {
   margin: 0 0 1rem;
   padding: 0.75rem 1rem;
