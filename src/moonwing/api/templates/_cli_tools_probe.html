@@ -6,8 +6,9 @@
     On startup, API and worker also <strong>execute</strong> each found binary with <code>--version</code>, then <code>-V</code>, then <code>--help</code> (short timeout, no TTY) and log the outcome — disable with <code>MOONWING_CLI_BOOT_SMOKE=false</code> if you need faster boot.
   </p>
   <p style="margin:0 0 12px 0; font-size:0.85rem; color:var(--text-muted); border-left:3px solid var(--accent); padding-left:10px;">
-    <strong>Install from the browser?</strong> Moonwing cannot safely run package managers on your host from a web click.
-    Use <strong>Copy command</strong> below, paste into a shell on the <strong>same machine as the worker</strong> (or your dev laptop if you run the worker there), then restart the API/worker so PATH is picked up.
+    <strong>Installing CLIs:</strong> Moonwing does not run package managers for you. Use <strong>Copy command</strong> below on the
+    <strong>Docker host</strong> (SSH), not inside the API container unless you intentionally install there. For Compose, bind-mount binaries into
+    <code>moonwing-worker</code> or use <strong>API</strong> execution mode with stored API keys.
   </p>
   <table class="data-table cli-tools-table" style="width:100%; font-size:0.9rem;">
     <thead>

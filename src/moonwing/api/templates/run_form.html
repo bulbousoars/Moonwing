@@ -12,6 +12,7 @@
 
 <div class="detail-card" style="max-width:760px">
   <form method="post" action="/runs/new">
+    <input type="hidden" name="execution_mode" value="api">
     <div class="form-group">
       <label for="job_family">Job Family</label>
       <select id="job_family" name="job_family" required>
@@ -49,24 +50,13 @@
       </select>
     </div>
 
-    <div class="form-group">
-      <label for="execution_mode">Execution Mode</label>
-      <select id="execution_mode" name="execution_mode">
-        <option value="api">API — direct call to the provider's HTTP API using the credential's API key</option>
-        <option value="cli">CLI — invokes the local claude/codex/gemini binary; uses your local login (subscription)</option>
-      </select>
-      <small style="color:var(--text-muted)">Switch between modes to see which providers each one supports. <strong>Docker:</strong> the default worker image does <strong>not</strong> include those CLIs — use <strong>API</strong> on the server, or install/mount binaries and set <code>MOONWING_*_CLI_BINARY</code> in the worker environment.</small>
-    </div>
-
     {% set provider_labels = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'google': 'Google', 'openrouter': 'OpenRouter', 'ollama': 'Ollama'} %}
     <div class="form-group">
       <label for="provider">Provider</label>
       <select id="provider" name="provider">
         {% for key, label in provider_labels.items() %}
         <option value="{{ key }}"
-          data-api-available="{{ '1' if key in api_available_providers else '0' }}"
-          data-cli-available="{{ '1' if key in cli_available_providers else '0' }}"
-          data-cli-binary="{{ cli_binaries.get(key, '') }}">{{ label }}</option>
+          data-api-available="{{ '1' if key in api_available_providers else '0' }}">{{ label }}</option>
         {% endfor %}
       </select>
       <small id="provider_hint" style="color:var(--text-muted)"></small>
@@ -98,7 +88,7 @@
       <label for="ai_instruction">Instructions for the AI <span style="font-weight:normal;color:var(--text-muted)">(optional)</span></label>
       <textarea id="ai_instruction" name="ai_instruction" rows="4" maxlength="16000"
         placeholder="e.g. Pay special attention to our OIDC / SSO setup, Authentik, and any exposed auth or callback URLs."></textarea>
-      <small style="color:var(--text-muted)">Appended to the scan prompt for both API and CLI runs. Max 16&nbsp;000 characters.</small>
+      <small style="color:var(--text-muted)">Appended to the scan prompt. Max 16&nbsp;000 characters. Scans use the provider HTTP API.</small>
     </div>
 
     <button type="submit" class="btn btn-primary" id="launch_btn">Launch Scan</button>
@@ -110,28 +100,21 @@
   const INITIAL_PROVIDER = {{ initial_provider|tojson }};
   const CREDENTIALS = {{ credentials|tojson }};
 
-  function _modeIs(value) { return document.getElementById('execution_mode').value === value; }
-
   function _refreshProviderOptions() {
     const providerEl = document.getElementById('provider');
-    const mode = document.getElementById('execution_mode').value;
     let firstEnabled = null;
     let currentSelected = providerEl.value;
     let currentStillEnabled = false;
 
     Array.from(providerEl.options).forEach(opt => {
-      const apiOk = opt.dataset.apiAvailable === '1';
-      const cliOk = opt.dataset.cliAvailable === '1';
-      const enabled = (mode === 'api') ? apiOk : cliOk;
+      const enabled = opt.dataset.apiAvailable === '1';
       opt.disabled = !enabled;
       opt.style.color = enabled ? '' : 'var(--text-muted, #999)';
-      // Suffix (no credential / requires X CLI) when disabled — undecorated when enabled.
       const baseLabel = opt.textContent.split(' — ')[0];
       if (enabled) {
         opt.textContent = baseLabel;
       } else {
-        const reason = (mode === 'api') ? 'no credential' : 'no CLI binary mapped';
-        opt.textContent = baseLabel + ' — ' + reason;
+        opt.textContent = baseLabel + ' — no credential';
       }
       if (enabled) {
         if (firstEnabled === null) firstEnabled = opt.value;
@@ -152,16 +135,9 @@
     const opt = providerEl.options[providerEl.selectedIndex];
     const hint = document.getElementById('provider_hint');
     if (!opt) { hint.textContent = ''; return; }
-    if (_modeIs('cli')) {
-      const bin = opt.dataset.cliBinary;
-      hint.textContent = bin
-        ? 'CLI mode will invoke the "' + bin + '" binary on the Moonwing host. Make sure it is installed and authenticated.'
-        : 'CLI mode is unavailable for this provider.';
-    } else {
-      hint.textContent = (providerEl.value === 'ollama')
-        ? 'Ollama runs locally — no API key required.'
-        : 'API mode uses the credential below to authenticate.';
-    }
+    hint.textContent = (providerEl.value === 'ollama')
+      ? 'Ollama runs locally — no API key required.'
+      : 'Uses the credential below to call the provider HTTP API.';
   }
 
   function _populateModelOptions() {
@@ -188,7 +164,6 @@
 
   function _refreshCredentialFilter() {
     const provider = document.getElementById('provider').value;
-    const mode = document.getElementById('execution_mode').value;
     const credInput = document.getElementById('credential_id');
     const display = document.getElementById('credential_display');
     const hint = document.getElementById('credential_hint');
@@ -200,24 +175,20 @@
       credInput.value = match.id;
       display.textContent = match.display_name + ' (' + match.provider + ')';
       display.classList.remove('credential-display--missing');
-      hint.textContent = (mode === 'cli')
-        ? 'Auto-selected for ' + provider + '. CLI mode authenticates via your local login; this credential is recorded for audit.'
-        : 'Auto-selected for ' + provider + '. API mode will use this credential to authenticate.';
+      hint.textContent = 'Auto-selected for ' + provider + '.';
       launchBtn.disabled = false;
       launchBtn.title = '';
     } else {
       credInput.value = '';
       display.textContent = 'No ' + provider + ' credential available';
       display.classList.add('credential-display--missing');
-      const modeLabel = (mode === 'cli') ? 'CLI' : 'API';
-      hint.innerHTML = 'No <strong>' + provider + '</strong> credential exists for ' + modeLabel + ' mode. <a href="/credentials/new">Add one</a>, or pick a different provider/mode.';
+      hint.innerHTML = 'No <strong>' + provider + '</strong> credential. <a href="/credentials/new">Add one</a>, or pick a different provider.';
       launchBtn.disabled = true;
-      launchBtn.title = 'No matching credential — add one or pick a different provider/mode.';
+      launchBtn.title = 'No matching credential — add one or pick a different provider.';
     }
   }
 
   // Wire up listeners and run once on load.
-  document.getElementById('execution_mode').addEventListener('change', _refreshProviderOptions);
   document.getElementById('provider').addEventListener('change', () => { _refreshProviderHint(); _populateModelOptions(); _refreshCredentialFilter(); });
 
   // Set initial provider selection BEFORE the first refresh so we land on a working default.

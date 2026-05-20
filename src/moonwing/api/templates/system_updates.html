@@ -13,9 +13,9 @@
 </div>
 
 <div class="detail-card" style="max-width:960px;margin-bottom:1.25rem;">
-  <strong>CLI tools &amp; host shell</strong>
-  <p class="form-help" style="margin:0.35rem 0 0.75rem;">See which AI CLIs this manager sees on <code>PATH</code>, copy install commands, and open an in-browser terminal on this host (Linux; enable from that page, or set <code>MOONWING_WEB_TERMINAL_ENABLED</code> in the environment).</p>
-  <a href="/system/host-terminal" class="btn">Open CLI &amp; terminal →</a>
+  <strong>Host AI tools</strong>
+  <p class="form-help" style="margin:0.35rem 0 0.75rem;">See whether Claude, Codex, Gemini, Cursor, or Kimi are installed on the <strong>Docker host</strong> (read-only mount scan).</p>
+  <a href="/system/cli-tools" class="btn">Open host AI tools →</a>
 </div>
 
 {% if update_applied_ok %}
@@ -81,14 +81,9 @@
   </div>
   {% endif %}
   <div class="kpi-cell">
-    <span class="kpi-label">Worker CLI agents ready</span>
-    <strong>{% if worker_cli_snapshot %}{{ worker_cli_snapshot.ready_for_cli_scan_count }} / {{ worker_cli_snapshot.total_cli_slots }}{% else %}—{% endif %}</strong>
-    <small>Authoritative for CLI-mode scans</small>
-  </div>
-  <div class="kpi-cell">
-    <span class="kpi-label">API process CLI ready</span>
-    <strong>{% if api_cli_snapshot %}{{ api_cli_snapshot.ready_for_cli_scan_count }} / {{ api_cli_snapshot.total_cli_slots }}{% else %}—{% endif %}</strong>
-    <small>This Python process only</small>
+    <span class="kpi-label">Host AI tools found</span>
+    <strong>{{ host_scan.installed_count }} / {{ host_scan.total_tools }}</strong>
+    <small>Docker host via bind mounts</small>
   </div>
 </div>
 
@@ -136,51 +131,6 @@
   </div>
 </div>
 
-<div class="detail-grid">
-  <div class="detail-card">
-    <h3>moonwing-worker (CLI scans)</h3>
-    <p class="text-muted" style="margin-top:0">This snapshot is what the worker wrote after its last boot probe — use it to predict CLI-mode scan success.</p>
-    {% if not worker_cli_snapshot %}
-    <p class="text-muted">No worker snapshot yet. Start <code>moonwing-worker</code> (after <code>alembic upgrade</code>) so it can persist diagnostics.</p>
-    {% else %}
-    <div class="detail-row"><span class="label">Ready / configured slots</span><span class="value"><strong>{{ worker_cli_snapshot.ready_for_cli_scan_count }}</strong> / {{ worker_cli_snapshot.total_cli_slots }}</span></div>
-    <div class="detail-row"><span class="label">Recorded</span><span class="value">{{ worker_cli_snapshot.persisted_at or worker_cli_snapshot.captured_at }}</span></div>
-    <table class="data-table" style="width:100%; font-size:0.9rem; margin-top:0.75rem;">
-      <thead><tr><th>Tool</th><th>Resolved</th><th>Exec smoke</th></tr></thead>
-      <tbody>
-      {% for t in worker_cli_snapshot.tools %}
-        <tr>
-          <td><strong>{{ t.id }}</strong></td>
-          <td>{% if t.resolved_path %}<code style="word-break:break-all;">{{ t.resolved_path }}</code>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td>{% if not t.available %}<span class="text-muted">missing</span>{% elif t.smoke_ok is sameas true %}<span style="color:var(--ok,#080);">ok</span>{% elif t.smoke_ok is sameas false %}<span class="badge badge-high">fail</span>{% else %}<span class="text-muted">n/a</span>{% endif %}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% endif %}
-  </div>
-  <div class="detail-card">
-    <h3>moonwing-api (this process)</h3>
-    <p class="text-muted" style="margin-top:0">Live probe in the API container/process — compare to the worker when debugging Docker PATH splits.</p>
-    {% if not api_cli_snapshot %}
-    <p class="text-muted">Snapshot unavailable.</p>
-    {% else %}
-    <div class="detail-row"><span class="label">Ready / slots</span><span class="value"><strong>{{ api_cli_snapshot.ready_for_cli_scan_count }}</strong> / {{ api_cli_snapshot.total_cli_slots }}</span></div>
-    <div class="detail-row"><span class="label">Captured</span><span class="value">{{ api_cli_snapshot.captured_at }}</span></div>
-    <table class="data-table" style="width:100%; font-size:0.9rem; margin-top:0.75rem;">
-      <thead><tr><th>Tool</th><th>Resolved</th><th>Exec smoke</th></tr></thead>
-      <tbody>
-      {% for t in api_cli_snapshot.tools %}
-        <tr>
-          <td><strong>{{ t.id }}</strong></td>
-          <td>{% if t.resolved_path %}<code style="word-break:break-all;">{{ t.resolved_path }}</code>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td>{% if not t.available %}<span class="text-muted">missing</span>{% elif t.smoke_ok is sameas true %}<span style="color:var(--ok,#080);">ok</span>{% elif t.smoke_ok is sameas false %}<span class="badge badge-high">fail</span>{% else %}<span class="text-muted">n/a</span>{% endif %}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% endif %}
-  </div>
 </div>
 
 {% if update_can_apply %}

@@ -18,10 +18,16 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    # Read-only peek at Docker host PATH dirs for System → Host AI tools (stat only, no execution).
+    volumes:
+      - /usr/local/bin:/host-probe/usr/local/bin:ro
+      - /usr/bin:/host-probe/usr/bin:ro
+      - /bin:/host-probe/bin:ro
     environment:
       MOONWING_DATABASE_URL: postgresql+psycopg://moonwing:moonwing@postgres:5432/moonwing
       MOONWING_QUEUE_BACKEND: redis://redis:6379/0
       MOONWING_OBJECT_STORAGE_ENDPOINT: minio:9000
+      MOONWING_HOST_CLI_SCAN_DIRS: /host-probe/usr/local/bin,/host-probe/usr/bin,/host-probe/bin
     depends_on:
       postgres:
         condition: service_healthy

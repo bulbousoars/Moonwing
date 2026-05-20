@@ -80,11 +80,8 @@
       <input type="text" id="model" name="model" required maxlength="128" placeholder="claude-sonnet-4-6" value="{{ schedule.model if schedule else '' }}">
     </div>
     <div class="form-group">
-      <label for="execution_mode">Execution mode</label>
-      <select id="execution_mode" name="execution_mode">
-        <option value="api" {% if not schedule or schedule.execution_mode == 'api' %}selected{% endif %}>API</option>
-        <option value="cli" {% if schedule and schedule.execution_mode == 'cli' %}selected{% endif %}>CLI</option>
-      </select>
+      <input type="hidden" name="execution_mode" value="api">
+      <p class="form-help" style="margin:0;">Schedules use the provider HTTP API and stored credentials.</p>
       <small style="color:var(--text-muted)">Use <strong>API</strong> unless the worker has claude/codex/gemini installed (default Docker image does not).</small>
     </div>
     <div class="form-group">

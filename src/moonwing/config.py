@@ -54,7 +54,9 @@ class Settings(BaseSettings):
     # JSON argv for host reboot from Updates (empty = hidden). Example:
     # '["sudo","/sbin/shutdown","-r","now"]'
     admin_reboot_argv_json: str = ''
-    # In-browser PTY on the API host (POSIX + forkpty only). High privilege — keep off unless needed.
-    # When no DB row exists, this env default applies; the UI can persist enable/disable in `system_setting`.
+    # Comma-separated directories bind-mounted from the Docker host (read-only stat scan).
+    # Leave empty to use /host-probe/usr/local/bin, /host-probe/usr/bin, /host-probe/bin when present.
+    host_cli_scan_dirs: str = ''
+    # In-browser PTY (off by default). Not needed for CLI visibility; enables RCE on the API container.
     web_terminal_enabled: bool = False
     web_terminal_shell: str = '/bin/bash'

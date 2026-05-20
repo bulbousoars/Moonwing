@@ -19,13 +19,10 @@ from sqlalchemy.orm import Session
 
 from moonwing.api.deps import get_db
 from moonwing.api.deps import _get_settings
-from moonwing.services.web_terminal_status import build_web_terminal_status, terminal_supported
+from moonwing.services.host_cli_discovery import scan_host_ai_tools
 from moonwing.services.ai_provider_probe import (
-    PROVIDER_CLI_BINARIES,
     PROVIDER_DEFAULT_MODELS,
     PROVIDER_MODELS,
-    build_cli_agent_snapshot,
-    discover_ai_cli_tools,
 )
 from moonwing.services.auth import create_session_token, create_service_token, hash_password, hash_service_token, verify_password
 from moonwing.services.crypto import CryptoError, decrypt_api_key, encrypt_api_key, mask_api_key
@@ -76,13 +73,11 @@ from moonwing.services.system_updates import (
     spawn_admin_host_reboot,
 )
 from moonwing.services.targets import normalize_target_metadata
-from moonwing.services.worker_cli_snapshot import load_cli_agent_snapshot
 from moonwing.services.run_schedule_service import (
     compute_next_run_utc,
     validate_cron_expression,
     validate_timezone,
 )
-from moonwing.services.system_setting import set_web_terminal_enabled
 from moonwing.worker.clearwing_runner import DEFAULT_AI_INSTRUCTION_MAX_CHARS
 from moonwing.db.models import (
     Artifact,
@@ -770,14 +765,12 @@ def sensor_delete(sensor_id: UUID, request: Request, db: Session = Depends(get_d
 
 def _system_updates_page_context(settings, db: Session | None = None) -> dict[str, object]:
     gs = build_git_update_status(settings)
-    worker_snap = load_cli_agent_snapshot(db) if db is not None else None
-    api_snap = build_cli_agent_snapshot(settings, process_label="moonwing-api") if db is not None else None
+    host_scan = scan_host_ai_tools(settings)
     reboot_argv = parse_admin_reboot_argv(settings)
     return {
         'update_status': asdict(gs),
         'update_can_apply': gs.apply_available_reason is None and gs.is_git_repository,
-        'worker_cli_snapshot': worker_snap,
-        'api_cli_snapshot': api_snap,
+        'host_scan': host_scan,
         'reboot_configured': bool(reboot_argv),
         'reboot_argv_preview': json.dumps(reboot_argv) if reboot_argv else '',
     }
@@ -886,82 +879,24 @@ def system_updates_reboot(request: Request, db: Session = Depends(get_db), confi
     return RedirectResponse(url=f'/system/updates?reboot={"1" if ok else "0"}', status_code=303)
 
 
-@router.get('/system/host-terminal', response_class=HTMLResponse)
-def system_host_terminal_page(
-    request: Request,
-    db: Session = Depends(get_db),
-    shell: str | None = Query(None),
-):
+@router.get('/system/cli-tools', response_class=HTMLResponse)
+def system_cli_tools_page(request: Request, db: Session = Depends(get_db)):
     _require(request, 'system_updates')
     settings = _get_settings()
-    status = build_web_terminal_status(db, settings)
-    shell_notice: str | None = None
-    if shell == 'enabled':
-        shell_notice = 'Live shell enabled. The terminal below will connect when ready.'
-    elif shell == 'disabled':
-        shell_notice = 'Live shell disabled. Existing WebSocket sessions are closed on reconnect.'
-    elif shell == 'env_default':
-        shell_notice = 'Cleared database override — using MOONWING_WEB_TERMINAL_ENABLED from the environment.'
     return _render(
         request,
-        'system_host_terminal.html',
+        'system_cli_tools.html',
         {
-            'active': 'system_host_terminal',
-            'cli_tool_report': discover_ai_cli_tools(settings, process_label='moonwing-api'),
-            'web_terminal_enabled': status['enabled_effective'],
-            'web_terminal_env_default': status['env_default'],
-            'web_terminal_db_override': status['db_override'],
-            'web_terminal_shell': status['shell_configured'],
-            'web_terminal_shell_resolved': status['shell_resolved'],
-            'web_terminal_supported': status['supported'],
-            'web_terminal_ready': status['ready'],
-            'web_terminal_blockers': status['blockers'],
-            'web_terminal_db_settings_available': status['db_settings_available'],
-            'shell_notice': shell_notice,
+            'active': 'system_cli_tools',
+            'host_scan': scan_host_ai_tools(settings),
         },
     )
 
 
-@router.post('/system/host-terminal/web-shell')
-def system_host_terminal_web_shell_post(
-    request: Request,
-    db: Session = Depends(get_db),
-    action: str = Form(...),
-):
-    _require(request, 'system_updates')
-    if not terminal_supported():
-        raise HTTPException(status_code=400, detail="In-browser shell is not supported on this host OS")
-    from moonwing.services.web_terminal_status import system_setting_table_available
-
-    if not system_setting_table_available(db):
-        raise HTTPException(
-            status_code=503,
-            detail="Database migration required: run `alembic upgrade head` to create system_setting.",
-        )
-    raw = (action or "").strip().lower()
-    if raw not in {"enable", "disable", "env_default"}:
-        raise HTTPException(status_code=400, detail="Invalid action")
-    if raw == "enable":
-        set_web_terminal_enabled(db, True)
-        meta = {"enabled": True}
-    elif raw == "disable":
-        set_web_terminal_enabled(db, False)
-        meta = {"enabled": False}
-    else:
-        set_web_terminal_enabled(db, None)
-        meta = {"cleared_db_override": True}
-    audit(
-        db,
-        action="system_web_terminal_toggle",
-        resource_type="system",
-        actor_user_id=UUID(request.state.current_user["id"]),
-        resource_id="web_terminal",
-        outcome="success",
-        metadata={"action": raw, **meta},
-    )
-    db.commit()
-    query = {"enable": "enabled", "disable": "disabled", "env_default": "env_default"}[raw]
-    return RedirectResponse(url=f"/system/host-terminal?shell={query}", status_code=303)
+@router.get('/system/host-terminal', include_in_schema=False)
+def system_host_terminal_redirect():
+    """Legacy URL — CLI page no longer includes an in-browser shell."""
+    return RedirectResponse(url='/system/cli-tools', status_code=301)
 
 
 def _build_run_form_context(request: Request, db: Session, *, target: str = '', error: str = '') -> dict:
@@ -982,7 +917,6 @@ def _build_run_form_context(request: Request, db: Session, *, target: str = '', 
         for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.name).all()
     ]
     api_available_providers = {c['provider'] for c in credentials} | {'ollama'}
-    cli_available_providers = set(PROVIDER_CLI_BINARIES.keys())
     initial_provider = next(
         (p for p in ['anthropic', 'openai', 'google', 'openrouter', 'ollama'] if p in api_available_providers),
         'anthropic',
@@ -996,8 +930,6 @@ def _build_run_form_context(request: Request, db: Session, *, target: str = '', 
         'preselect_target': target,
         'provider_models': PROVIDER_MODELS,
         'api_available_providers': sorted(api_available_providers),
-        'cli_available_providers': sorted(cli_available_providers),
-        'cli_binaries': PROVIDER_CLI_BINARIES,
         'initial_provider': initial_provider,
         'error': error,
     }

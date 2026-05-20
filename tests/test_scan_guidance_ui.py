@@ -38,10 +38,10 @@ def test_target_form_hints_which_job_family_to_use():
     assert "Repositories, binaries, and SBOMs usually use Source Hunt." in template
 
 
-def test_system_host_terminal_template_wires_xterm_when_enabled():
-    template = (ROOT / "src/moonwing/api/templates/system_host_terminal.html").read_text(encoding="utf-8")
-    assert "/ws/system/terminal" in template
-    assert "_cli_tools_probe.html" in template
-    assert "FitAddon.FitAddon" in template
-    assert "live:" in template
-    assert "/system/host-terminal/web-shell" in template
+def test_system_cli_tools_page_scans_docker_host():
+    template = (ROOT / "src/moonwing/api/templates/system_cli_tools.html").read_text(encoding="utf-8")
+    assert "Docker host" in template
+    assert "cursor" in template.lower()
+    assert "kimi" in template.lower()
+    assert "/ws/system/terminal" not in template
+    assert "_cli_tools_probe.html" not in template

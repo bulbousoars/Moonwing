@@ -12,7 +12,6 @@ from sqlalchemy.pool import StaticPool
 
 from moonwing.db.base import Base
 from moonwing.db.models import User
-from moonwing.services.web_terminal_status import terminal_supported
 
 
 @pytest.fixture(name='upd_client')
@@ -98,24 +97,22 @@ def test_system_updates_rest_status_ok_admin(upd_client):
     assert payload['commits_behind'] is None
 
 
-def test_terminal_rest_status_forbidden_viewer(upd_client):
+def test_host_ai_tools_rest_forbidden_viewer(upd_client):
     app, ids = upd_client
     client = _session_client(app, ids['viewer'], role='viewer')
-    res = client.get('/api/system/terminal/status')
+    res = client.get('/api/system/host-ai-tools')
     assert res.status_code == 403
 
 
-def test_terminal_rest_status_ok_admin(upd_client):
+def test_host_ai_tools_rest_ok_admin(upd_client):
     app, ids = upd_client
     client = _session_client(app, ids['admin'])
-    res = client.get('/api/system/terminal/status')
+    res = client.get('/api/system/host-ai-tools')
     assert res.status_code == 200
     payload = res.json()
-    assert 'supported' in payload
-    assert 'enabled_effective' in payload
-    assert 'ready' in payload
-    assert 'blockers' in payload
-    assert isinstance(payload['blockers'], list)
+    assert 'tools' in payload
+    assert payload['total_tools'] == 5
+    assert 'claude' in {t['id'] for t in payload['tools']}
 
 
 def test_system_updates_page_forbidden_viewer(upd_client):
@@ -163,67 +160,27 @@ def test_system_updates_apply_success_redirect(monkeypatch, upd_client):
     assert 'applied=1' in res.headers.get('location', '')
 
 
-def test_host_terminal_page_forbidden_viewer(upd_client):
+def test_cli_tools_page_forbidden_viewer(upd_client):
     app, ids = upd_client
     client = _session_client(app, ids['viewer'], role='viewer')
-    res = client.get('/system/host-terminal')
+    res = client.get('/system/cli-tools')
     assert res.status_code == 403
 
 
-def test_host_terminal_page_ok_admin(upd_client):
+def test_cli_tools_page_ok_admin(upd_client):
     app, ids = upd_client
     client = _session_client(app, ids['admin'])
-    res = client.get('/system/host-terminal')
+    res = client.get('/system/cli-tools')
     assert res.status_code == 200
-    assert b'Host terminal' in res.content or b'host terminal' in res.content.lower()
-    assert b'Local AI CLI detection' in res.content
-    assert b'In-browser shell' in res.content
-    if terminal_supported():
-        assert b'Enable live shell' in res.content
+    assert b'Host AI tools' in res.content
+    assert b'Claude' in res.content or b'claude' in res.content
+    assert b'Cursor' in res.content
+    assert b'Enable live shell' not in res.content
 
 
-@pytest.mark.skipif(not terminal_supported(), reason='Web shell DB toggle is only exposed when PTY is supported')
-def test_host_terminal_web_shell_enable_disable(upd_client):
-    from moonwing.api import deps as deps_module
-    from moonwing.db.models import SystemSetting
-    from moonwing.services.system_setting import KEY_WEB_TERMINAL_ENABLED
-
+def test_host_terminal_legacy_redirect(upd_client):
     app, ids = upd_client
     client = _session_client(app, ids['admin'])
-
-    res = client.post('/system/host-terminal/web-shell', data={'action': 'enable'}, follow_redirects=False)
-    assert res.status_code == 303
-    assert res.headers.get('location', '').endswith('/system/host-terminal?shell=enabled')
-
-    db = deps_module._get_session_factory()()
-    try:
-        row = db.get(SystemSetting, KEY_WEB_TERMINAL_ENABLED)
-        assert row is not None
-        assert row.value == 'true'
-    finally:
-        db.close()
-
-    res2 = client.get('/system/host-terminal?shell=enabled')
-    assert res2.status_code == 200
-    assert b'Live shell enabled' in res2.content
-    assert b'Disable live shell' in res2.content
-
-    res3 = client.post('/system/host-terminal/web-shell', data={'action': 'disable'}, follow_redirects=False)
-    assert res3.status_code == 303
-
-    db = deps_module._get_session_factory()()
-    try:
-        row = db.get(SystemSetting, KEY_WEB_TERMINAL_ENABLED)
-        assert row is not None
-        assert row.value == 'false'
-    finally:
-        db.close()
-
-    res4 = client.post('/system/host-terminal/web-shell', data={'action': 'env_default'}, follow_redirects=False)
-    assert res4.status_code == 303
-
-    db = deps_module._get_session_factory()()
-    try:
-        assert db.get(SystemSetting, KEY_WEB_TERMINAL_ENABLED) is None
-    finally:
-        db.close()
+    res = client.get('/system/host-terminal', follow_redirects=False)
+    assert res.status_code == 301
+    assert res.headers.get('location', '').endswith('/system/cli-tools')

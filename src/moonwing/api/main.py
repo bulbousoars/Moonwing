@@ -24,7 +24,8 @@ _BASE = Path(__file__).resolve().parent
 
 app = FastAPI(title='moonwing')
 
-register_host_terminal(app)
+if _get_settings().web_terminal_enabled:
+    register_host_terminal(app)
 
 app.mount('/static', StaticFiles(directory=_BASE / 'static'), name='static')
 

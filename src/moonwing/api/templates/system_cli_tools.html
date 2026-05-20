@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Host AI tools - Moonwing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Host AI tools</h1>
+  <p>Read-only check for Claude, Codex, Gemini, Cursor, and Kimi on the <strong>Docker host</strong> (via bind mounts). Scans do not use these binaries — use <strong>API</strong> execution with stored keys.</p>
+</div>
+
+{% if host_scan.setup_required %}
+<div class="probe-result error" style="max-width:960px;margin-bottom:1rem;">
+  <strong>No host directories mounted.</strong>
+  Add the <code>host-probe</code> volumes in <code>docker-compose.yml</code> (see comments on <code>moonwing-api</code>) and restart the stack, or set
+  <code>MOONWING_HOST_CLI_SCAN_DIRS</code> to paths you mount read-only from the host.
+</div>
+{% elif host_scan.using_compose_defaults %}
+<div class="probe-result" style="max-width:960px;margin-bottom:1rem;border-color:var(--ok);">
+  Using default <code>/host-probe/…</code> mounts from Compose. Found <strong>{{ host_scan.installed_count }}</strong> / {{ host_scan.total_tools }} tools.
+</div>
+{% endif %}
+
+<div class="detail-card" style="max-width:960px;margin-bottom:1.25rem;">
+  <h2 style="margin-top:0;font-size:1.05rem;">Docker host scan</h2>
+  <p class="form-help" style="margin:0 0 0.75rem;">
+    Directories: {% if host_scan.effective_dirs %}{% for d in host_scan.effective_dirs %}<code>{{ d }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<em>none</em>{% endif %}
+    · Scanned {{ host_scan.scanned_at }}
+    {% if host_scan.in_container %} · API container{% endif %}
+  </p>
+  <table class="data-table" style="width:100%; font-size:0.9rem;">
+    <thead>
+      <tr><th>Tool</th><th>Looks for</th><th>On host</th><th>Path (inside container)</th></tr>
+    </thead>
+    <tbody>
+      {% for t in host_scan.tools %}
+      <tr>
+        <td><strong>{{ t.display_name }}</strong></td>
+        <td><code>{{ t.binaries | join(', ') }}</code></td>
+        <td>{% if t.installed %}<span class="cli-probe-ok">Found</span>{% else %}<span class="cli-probe-miss">Not found</span>{% endif %}</td>
+        <td>{% if t.resolved_path %}<code style="word-break:break-all;">{{ t.resolved_path }}</code>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="form-help" style="margin:0.75rem 0 0;">
+    Machine-readable: <code>GET /api/system/host-ai-tools</code>
+  </p>
+</div>
+
+<div class="detail-card" style="max-width:960px;">
+  <h2 style="margin-top:0;font-size:1.05rem;">Compose setup</h2>
+  <p class="form-help" style="margin:0 0 0.75rem;">
+    Moonwing only sees the host where you mount host <code>bin</code> directories read-only. Install tools on the host (SSH), not inside the API image.
+  </p>
+  <pre class="json-view" style="max-height:14rem;font-size:0.85rem;">moonwing-api:
+  volumes:
+    - /usr/local/bin:/host-probe/usr/local/bin:ro
+    - /usr/bin:/host-probe/usr/bin:ro
+    - /bin:/host-probe/bin:ro
+  environment:
+    MOONWING_HOST_CLI_SCAN_DIRS: /host-probe/usr/local/bin,/host-probe/usr/bin,/host-probe/bin</pre>
+  <p class="form-help" style="margin:0.5rem 0 0;">
+    For user-local installs, also mount e.g. <code>/home/you/.local/bin:/host-probe/home/you/.local/bin:ro</code> and add that path to <code>MOONWING_HOST_CLI_SCAN_DIRS</code>.
+  </p>
+</div>
+{% endblock %}

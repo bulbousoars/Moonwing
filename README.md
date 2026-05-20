@@ -44,7 +44,7 @@ Fill in at least **`MOONWING_SESSION_SECRET`**, **`MOONWING_ENCRYPTION_KEY`**, a
 
 From your own PC, visit **`http://THE_SERVER_IP:8000`** (replace with your server’s IP or hostname). Finish the setup screens.
 
-Production: put **HTTPS** in front with your usual reverse proxy. If you use **System → CLI & terminal**, the proxy must forward WebSockets for `/ws/system/terminal` (e.g. nginx: `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";`).
+Production: put **HTTPS** in front with your usual reverse proxy.
 
 ### B) Put a sensor on a Windows PC (easy)
 
@@ -173,7 +173,7 @@ With **`--profile app`**, Compose also builds **`moonwing-api`**, **`moonwing-wo
 | redis | Queue placeholder / future buffering |
 | minio | Stored scan artifacts blob storage |
 
-**AI scan execution:** the default **`moonwing-worker`** image does **not** ship vendor CLIs (`claude`, `codex`, `gemini`). For **network scans** and similar jobs, use **Execution mode: API** with a credential that carries the provider’s **API key**, or install/mount the CLI in the worker and set **`MOONWING_CLAUDE_CLI_BINARY`**, **`MOONWING_CODEX_CLI_BINARY`**, or **`MOONWING_GEMINI_CLI_BINARY`** as appropriate.
+**AI scans** use the provider **HTTP API** and credentials you store in Moonwing (the default worker image does not run local CLIs). **System → Host AI tools** performs a **read-only** check of Claude, Codex, Gemini, Cursor, and Kimi on the **Docker host** via bind-mounted `bin` directories (configured in `docker-compose.yml`). It does not install tools or run them from the browser.
 
 Compose publishes **5432 / 6379 / 9000 / 9001 / 8000** on the loopback/host—**tighten firewalls** in production and prefer private Docker networks plus a reverse-proxy surface.
 

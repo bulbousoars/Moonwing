@@ -82,10 +82,14 @@ OPENAI_COMPATIBLE_ENDPOINTS = {
     "ollama": "http://host.docker.internal:11434/v1/chat/completions",
 }
 
+CLI_PROBE_CONTAINER_NOTE = (
+    "This probe runs inside the Moonwing API container/process. In Docker Compose it is not your "
+    "Docker host — it is the image filesystem and PATH inside that container."
+)
+
 CLI_PROBE_WORKER_NOTE = (
-    "CLI scans run inside the Moonwing worker process. If the API and worker use separate "
-    "containers or hosts, the paths below reflect only this process; check worker startup logs "
-    "for the worker's own probe line."
+    "CLI-mode scans execute inside moonwing-worker. Compare API vs worker tables when they run in "
+    "separate containers; only the worker snapshot predicts scan success."
 )
 
 # Vendor install paths change — keep URLs current; commands are typical npm/brew flows.
@@ -129,6 +133,27 @@ def resolve_cli_binary(configured: str) -> str | None:
         return None
     found = shutil.which(configured)
     return os.path.abspath(found) if found else None
+
+
+def parse_host_cli_probe_paths(raw: str) -> list[str]:
+    return [p.strip() for p in (raw or "").split(",") if p.strip()]
+
+
+def probe_host_mount_cli_paths(paths: list[str]) -> list[dict[str, Any]]:
+    """Read-only check of bind-mounted paths (typically host CLIs mounted into a container)."""
+    rows: list[dict[str, Any]] = []
+    for path in paths:
+        exists = os.path.isfile(path)
+        executable = exists and os.access(path, os.X_OK)
+        rows.append(
+            {
+                "path": path,
+                "basename": os.path.basename(path) or path,
+                "available": executable,
+                "resolved_path": os.path.abspath(path) if executable else None,
+            }
+        )
+    return rows
 
 
 def discover_ai_cli_tools(
@@ -186,7 +211,7 @@ def discover_ai_cli_tools(
         )
     return {
         "process_label": process_label,
-        "note": CLI_PROBE_WORKER_NOTE,
+        "note": CLI_PROBE_CONTAINER_NOTE if process_label == "moonwing-api" else CLI_PROBE_WORKER_NOTE,
         "tools": tools,
     }
 

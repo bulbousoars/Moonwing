@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from moonwing.api.deps import _get_settings, get_db
 from moonwing.services.iam import audit
 from moonwing.services.system_updates import apply_system_update, build_git_update_status
-from moonwing.services.web_terminal_status import build_web_terminal_status
+from moonwing.services.host_cli_discovery import scan_host_ai_tools
 
 router = APIRouter()
 
@@ -23,10 +23,16 @@ def api_updates_status():
     return asdict(gs)
 
 
-@router.get('/terminal/status')
-def api_terminal_status(db: Session = Depends(get_db)):
-    """Whether the in-browser host PTY can connect (for CLI & terminal page)."""
-    return build_web_terminal_status(db, _get_settings())
+@router.get('/host-ai-tools')
+def api_host_ai_tools():
+    """Read-only scan of AI CLIs on the Docker host (bind-mounted bin directories)."""
+    return scan_host_ai_tools(_get_settings())
+
+
+@router.get('/cli/visibility', include_in_schema=False)
+def api_cli_visibility_legacy():
+    """Deprecated alias for /host-ai-tools."""
+    return scan_host_ai_tools(_get_settings())
 
 
 class ApplyUpdatesBody(BaseModel):
