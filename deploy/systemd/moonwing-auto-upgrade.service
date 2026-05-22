@@ -10,7 +10,8 @@ Type=oneshot
 Environment=MOONWING_UPGRADE_REPO=/opt/moonwing/Moonwing
 Environment=MOONWING_GIT_BRANCH=main
 # Optional extra env, e.g. MOONWING_HEALTH_URL=https://127.0.0.1:8000/health
-# EnvironmentFile=-/etc/default/moonwing-auto-upgrade
+# Secops: copy deploy/secops/moonwing-auto-upgrade.env.example → /etc/default/moonwing-auto-upgrade
+EnvironmentFile=-/etc/default/moonwing-auto-upgrade
 WorkingDirectory=/opt/moonwing/Moonwing
 ExecStart=/opt/moonwing/Moonwing/scripts/moonwing-upgrade.sh
 TimeoutStartSec=900

@@ -10,6 +10,15 @@
 
 **Not** on realestate (`192.168.1.218`) — that host runs n8n, LunarLeague, realestate-app.
 
+## Auto-upgrade timer (`moonwing-auto-upgrade.timer`)
+
+Runs every **~10 minutes** on secops. Requires:
+
+1. **`/etc/default/moonwing-auto-upgrade`** — copy from `deploy/secops/moonwing-auto-upgrade.env.example` (sets `MOONWING_COMPOSE_OVERLAY` for MinIO **9011**).
+2. **`EnvironmentFile=-/etc/default/moonwing-auto-upgrade`** enabled in `moonwing-auto-upgrade.service` (uncomment or reinstall units).
+
+If pulls stop working, check: `sudo journalctl -u moonwing-auto-upgrade.service -n 20`. A common failure was **untracked `deploy/secops/`** blocking `git pull` (fixed in `scripts/moonwing-upgrade.sh` — commit and deploy that script).
+
 ## One command from Windows (OpenBao SSH — no password)
 
 Checkout on secops: **`/opt/moonwing/Moonwing`**. Uses `cursor-admin` via `New-AgentSshSession.ps1` (see `LunarLeague/docs/AGENT_HOMELAB_SSH.md`).

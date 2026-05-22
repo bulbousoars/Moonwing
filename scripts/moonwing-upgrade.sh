@@ -28,9 +28,17 @@ REMOTE="${MOONWING_GIT_REMOTE:-origin}"
 SKIP_GIT="${MOONWING_SKIP_GIT:-0}"
 
 if [[ "$SKIP_GIT" != "1" ]] && [[ -d .git ]]; then
-  if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-    echo "moonwing-upgrade: git working tree is not clean - commit, stash, or set MOONWING_SKIP_GIT=1" >&2
+  # Untracked files (e.g. hand-copied deploy/secops) must not block scheduled pulls.
+  DIRTY_TRACKED="$(git status --porcelain --untracked-files=no 2>/dev/null || true)"
+  if [[ -n "$DIRTY_TRACKED" ]]; then
+    echo "moonwing-upgrade: tracked files modified - commit, stash, or set MOONWING_SKIP_GIT=1" >&2
+    echo "$DIRTY_TRACKED" >&2
     exit 1
+  fi
+  UNTRACKED="$(git status --porcelain --untracked-files=normal 2>/dev/null | grep '^??' || true)"
+  if [[ -n "$UNTRACKED" ]]; then
+    echo "[moonwing-upgrade] note: untracked files present (not blocking pull):" >&2
+    echo "$UNTRACKED" | sed 's/^/  /' >&2
   fi
   echo "[moonwing-upgrade] git fetch $REMOTE"
   git fetch "$REMOTE"
