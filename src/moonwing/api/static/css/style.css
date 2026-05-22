@@ -2061,6 +2061,63 @@ tbody tr:last-child td { border-bottom: none; }
   font-weight: 600;
 }
 
+/* Host AI tools page: detail-card is ~960px; global table min-width is 980px */
+.host-ai-scan-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 0.25rem 0 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.host-ai-tools-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  font-size: 0.9rem;
+  border-collapse: collapse;
+}
+
+.host-ai-tools-table th,
+.host-ai-tools-table td {
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+  text-align: left;
+}
+
+.host-ai-tools-table th {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--bg-card);
+}
+
+.host-ai-tools-table th:nth-child(1),
+.host-ai-tools-table td:nth-child(1) { width: 20%; }
+.host-ai-tools-table th:nth-child(2),
+.host-ai-tools-table td:nth-child(2) { width: 18%; }
+.host-ai-tools-table th:nth-child(3),
+.host-ai-tools-table td:nth-child(3) { width: 14%; }
+.host-ai-tools-table th:nth-child(4),
+.host-ai-tools-table td:nth-child(4) { width: 48%; }
+
+.host-ai-tools-table code,
+.host-ai-path-code {
+  font-size: 0.82em;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.host-ai-scan-meta {
+  overflow-wrap: anywhere;
+}
+
 .cli-tools-table .cli-install-cell {
   vertical-align: top;
   min-width: 220px;

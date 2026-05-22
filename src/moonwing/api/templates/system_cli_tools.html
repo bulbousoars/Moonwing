@@ -20,13 +20,14 @@
 
 <div class="detail-card" style="max-width:960px;margin-bottom:1.25rem;">
   <h2 style="margin-top:0;font-size:1.05rem;">Docker host scan</h2>
-  <p class="form-help" style="margin:0 0 0.75rem;" id="host-scan-meta">
+  <p class="form-help host-ai-scan-meta" style="margin:0 0 0.75rem;" id="host-scan-meta">
     Directories: <span id="host-scan-dirs">{% if host_scan.effective_dirs %}{% for d in host_scan.effective_dirs %}<code>{{ d }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<em>none</em>{% endif %}</span>
     · Scanned <time id="host-scan-scanned-at" datetime="{{ host_scan.scanned_at }}"></time>
     <span id="host-scan-container-note">{% if host_scan.in_container %} · API container{% endif %}</span>
   </p>
   <p id="host-scan-error" class="probe-result error" style="display:none;margin:0 0 0.75rem;"></p>
-  <table class="data-table" style="width:100%; font-size:0.9rem;">
+  <div class="host-ai-scan-table-wrap">
+  <table class="host-ai-tools-table">
     <thead>
       <tr><th>Tool</th><th>Looks for</th><th>On host</th><th>Path (inside container)</th></tr>
     </thead>
@@ -36,11 +37,12 @@
         <td><strong>{{ t.display_name }}</strong></td>
         <td><code>{{ t.binaries | join(', ') }}</code></td>
         <td>{% if t.installed %}<span class="cli-probe-ok">Found</span>{% else %}<span class="cli-probe-miss">Not found</span>{% endif %}</td>
-        <td>{% if t.resolved_path %}<code style="word-break:break-all;">{{ t.resolved_path }}</code>{% else %}—{% endif %}</td>
+        <td>{% if t.resolved_path %}<code class="host-ai-path-code">{{ t.resolved_path }}</code>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   <p class="form-help" style="margin:0.75rem 0 0;">
     Machine-readable: <code>GET /api/system/host-ai-tools</code> · force scan: <code>POST /api/system/host-ai-tools/scan</code>
   </p>
@@ -102,7 +104,7 @@
         ? '<span class="cli-probe-ok">Found</span>'
         : '<span class="cli-probe-miss">Not found</span>';
       var path = t.resolved_path
-        ? '<code style="word-break:break-all;">' + escapeHtml(t.resolved_path) + '</code>'
+        ? '<code class="host-ai-path-code">' + escapeHtml(t.resolved_path) + '</code>'
         : '—';
       var bins = (t.binaries || []).map(escapeHtml).join(', ');
       return '<tr>'

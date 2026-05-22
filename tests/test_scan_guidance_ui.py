@@ -49,3 +49,4 @@ def test_system_cli_tools_page_scans_docker_host():
     assert "host-ai-tools/scan" in template
     assert "formatLocalDateTime" in template
     assert "host-scan-scanned-at" in template
+    assert "host-ai-scan-table-wrap" in template
