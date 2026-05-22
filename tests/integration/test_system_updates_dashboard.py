@@ -113,6 +113,25 @@ def test_host_ai_tools_rest_ok_admin(upd_client):
     assert 'tools' in payload
     assert payload['total_tools'] == 5
     assert 'claude' in {t['id'] for t in payload['tools']}
+    assert 'scanned_at' in payload
+    assert '+' in payload['scanned_at'] or payload['scanned_at'].endswith('Z')
+
+
+def test_host_ai_tools_scan_post_ok_admin(upd_client):
+    app, ids = upd_client
+    client = _session_client(app, ids['admin'])
+    res = client.post('/api/system/host-ai-tools/scan')
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload['total_tools'] == 5
+    assert 'scanned_at' in payload
+
+
+def test_host_ai_tools_scan_post_forbidden_viewer(upd_client):
+    app, ids = upd_client
+    client = _session_client(app, ids['viewer'], role='viewer')
+    res = client.post('/api/system/host-ai-tools/scan')
+    assert res.status_code == 403
 
 
 def test_system_updates_page_forbidden_viewer(upd_client):

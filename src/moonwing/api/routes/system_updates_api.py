@@ -29,6 +29,12 @@ def api_host_ai_tools():
     return scan_host_ai_tools(_get_settings())
 
 
+@router.post('/host-ai-tools/scan')
+def api_host_ai_tools_scan():
+    """Run a fresh host AI tools scan (same payload as GET /host-ai-tools)."""
+    return scan_host_ai_tools(_get_settings())
+
+
 @router.get('/cli/visibility', include_in_schema=False)
 def api_cli_visibility_legacy():
     """Deprecated alias for /host-ai-tools."""

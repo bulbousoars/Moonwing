@@ -175,6 +175,8 @@ With **`--profile app`**, Compose also builds **`moonwing-api`**, **`moonwing-wo
 
 **AI scans** use the provider **HTTP API** and credentials you store in Moonwing (the default worker image does not run local CLIs). **System → Host AI tools** performs a **read-only** check of Claude, Codex, Gemini, Cursor, and Kimi on the **Docker host** via bind-mounted `bin` directories (configured in `docker-compose.yml`). It does not install tools or run them from the browser.
 
+**Homelab (secops):** production Moonwing is on **`192.168.1.215:8000`**; HTTPS **`https://moonwing.dugganco.com`** (Traefik on `192.168.1.111` → secops). See [`deploy/secops/README.md`](deploy/secops/README.md) and **`Proxmox-DuggancoHomeNetwork/proxmox-homelab-services.md`**.
+
 Compose publishes **5432 / 6379 / 9000 / 9001 / 8000** on the loopback/host—**tighten firewalls** in production and prefer private Docker networks plus a reverse-proxy surface.
 
 ---

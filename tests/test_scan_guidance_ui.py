@@ -45,3 +45,7 @@ def test_system_cli_tools_page_scans_docker_host():
     assert "kimi" in template.lower()
     assert "/ws/system/terminal" not in template
     assert "_cli_tools_probe.html" not in template
+    assert "host-ai-scan-btn" in template
+    assert "host-ai-tools/scan" in template
+    assert "formatLocalDateTime" in template
+    assert "host-scan-scanned-at" in template

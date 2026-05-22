@@ -4,32 +4,33 @@
 <div class="page-header">
   <h1>Host AI tools</h1>
   <p>Read-only check for Claude, Codex, Gemini, Cursor, and Kimi on the <strong>Docker host</strong> (via bind mounts). Scans do not use these binaries — use <strong>API</strong> execution with stored keys.</p>
+  <div class="page-actions">
+    <button type="button" class="btn" id="host-ai-scan-btn">Scan now</button>
+  </div>
 </div>
 
-{% if host_scan.setup_required %}
-<div class="probe-result error" style="max-width:960px;margin-bottom:1rem;">
+<div id="host-scan-setup-banner" class="probe-result error" style="max-width:960px;margin-bottom:1rem;{% if not host_scan.setup_required %}display:none{% endif %}">
   <strong>No host directories mounted.</strong>
   Add the <code>host-probe</code> volumes in <code>docker-compose.yml</code> (see comments on <code>moonwing-api</code>) and restart the stack, or set
   <code>MOONWING_HOST_CLI_SCAN_DIRS</code> to paths you mount read-only from the host.
 </div>
-{% elif host_scan.using_compose_defaults %}
-<div class="probe-result" style="max-width:960px;margin-bottom:1rem;border-color:var(--ok);">
-  Using default <code>/host-probe/…</code> mounts from Compose. Found <strong>{{ host_scan.installed_count }}</strong> / {{ host_scan.total_tools }} tools.
+<div id="host-scan-defaults-banner" class="probe-result" style="max-width:960px;margin-bottom:1rem;border-color:var(--ok);{% if not host_scan.using_compose_defaults %}display:none{% endif %}">
+  Using default <code>/host-probe/…</code> mounts from Compose. Found <strong id="host-scan-installed-count">{{ host_scan.installed_count }}</strong> / <span id="host-scan-total-tools">{{ host_scan.total_tools }}</span> tools.
 </div>
-{% endif %}
 
 <div class="detail-card" style="max-width:960px;margin-bottom:1.25rem;">
   <h2 style="margin-top:0;font-size:1.05rem;">Docker host scan</h2>
-  <p class="form-help" style="margin:0 0 0.75rem;">
-    Directories: {% if host_scan.effective_dirs %}{% for d in host_scan.effective_dirs %}<code>{{ d }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<em>none</em>{% endif %}
-    · Scanned {{ host_scan.scanned_at }}
-    {% if host_scan.in_container %} · API container{% endif %}
+  <p class="form-help" style="margin:0 0 0.75rem;" id="host-scan-meta">
+    Directories: <span id="host-scan-dirs">{% if host_scan.effective_dirs %}{% for d in host_scan.effective_dirs %}<code>{{ d }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<em>none</em>{% endif %}</span>
+    · Scanned <time id="host-scan-scanned-at" datetime="{{ host_scan.scanned_at }}"></time>
+    <span id="host-scan-container-note">{% if host_scan.in_container %} · API container{% endif %}</span>
   </p>
+  <p id="host-scan-error" class="probe-result error" style="display:none;margin:0 0 0.75rem;"></p>
   <table class="data-table" style="width:100%; font-size:0.9rem;">
     <thead>
       <tr><th>Tool</th><th>Looks for</th><th>On host</th><th>Path (inside container)</th></tr>
     </thead>
-    <tbody>
+    <tbody id="host-ai-tools-tbody">
       {% for t in host_scan.tools %}
       <tr>
         <td><strong>{{ t.display_name }}</strong></td>
@@ -41,7 +42,7 @@
     </tbody>
   </table>
   <p class="form-help" style="margin:0.75rem 0 0;">
-    Machine-readable: <code>GET /api/system/host-ai-tools</code>
+    Machine-readable: <code>GET /api/system/host-ai-tools</code> · force scan: <code>POST /api/system/host-ai-tools/scan</code>
   </p>
 </div>
 
@@ -61,4 +62,126 @@
     For user-local installs, also mount e.g. <code>/home/you/.local/bin:/host-probe/home/you/.local/bin:ro</code> and add that path to <code>MOONWING_HOST_CLI_SCAN_DIRS</code>.
   </p>
 </div>
+
+<script>
+(function() {
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /** Show scan time in the browser's local timezone (e.g. EST for US Eastern). */
+  function formatLocalDateTime(isoStr) {
+    if (!isoStr) return '—';
+    var d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short'
+    });
+  }
+
+  function renderDirs(dirs) {
+    if (!dirs || !dirs.length) return '<em>none</em>';
+    return dirs.map(function(d) { return '<code>' + escapeHtml(d) + '</code>'; }).join(', ');
+  }
+
+  function renderToolsTable(tools) {
+    var tbody = document.getElementById('host-ai-tools-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (tools || []).map(function(t) {
+      var status = t.installed
+        ? '<span class="cli-probe-ok">Found</span>'
+        : '<span class="cli-probe-miss">Not found</span>';
+      var path = t.resolved_path
+        ? '<code style="word-break:break-all;">' + escapeHtml(t.resolved_path) + '</code>'
+        : '—';
+      var bins = (t.binaries || []).map(escapeHtml).join(', ');
+      return '<tr>'
+        + '<td><strong>' + escapeHtml(t.display_name || '') + '</strong></td>'
+        + '<td><code>' + bins + '</code></td>'
+        + '<td>' + status + '</td>'
+        + '<td>' + path + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function applyHostScan(data) {
+    var setupBanner = document.getElementById('host-scan-setup-banner');
+    var defaultsBanner = document.getElementById('host-scan-defaults-banner');
+    var errEl = document.getElementById('host-scan-error');
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+    if (setupBanner) setupBanner.style.display = data.setup_required ? '' : 'none';
+    if (defaultsBanner) {
+      defaultsBanner.style.display = data.using_compose_defaults ? '' : 'none';
+      var countEl = document.getElementById('host-scan-installed-count');
+      var totalEl = document.getElementById('host-scan-total-tools');
+      if (countEl) countEl.textContent = String(data.installed_count);
+      if (totalEl) totalEl.textContent = String(data.total_tools);
+    }
+
+    var dirsEl = document.getElementById('host-scan-dirs');
+    if (dirsEl) dirsEl.innerHTML = renderDirs(data.effective_dirs);
+
+    var scannedEl = document.getElementById('host-scan-scanned-at');
+    if (scannedEl && data.scanned_at) {
+      scannedEl.setAttribute('datetime', data.scanned_at);
+      scannedEl.textContent = formatLocalDateTime(data.scanned_at);
+      scannedEl.title = 'UTC: ' + data.scanned_at.replace('T', ' ').substring(0, 19);
+    }
+
+    var noteEl = document.getElementById('host-scan-container-note');
+    if (noteEl) noteEl.textContent = data.in_container ? ' · API container' : '';
+
+    renderToolsTable(data.tools);
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var scannedEl = document.getElementById('host-scan-scanned-at');
+    if (scannedEl) {
+      var iso = scannedEl.getAttribute('datetime');
+      scannedEl.textContent = formatLocalDateTime(iso);
+      if (iso) scannedEl.title = 'UTC: ' + iso.replace('T', ' ').substring(0, 19);
+    }
+
+    var btn = document.getElementById('host-ai-scan-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      var errEl = document.getElementById('host-scan-error');
+      btn.disabled = true;
+      var prevLabel = btn.textContent;
+      btn.textContent = 'Scanning…';
+      fetch('/api/system/host-ai-tools/scan', { method: 'POST', credentials: 'same-origin' })
+        .then(function(res) {
+          if (!res.ok) {
+            return res.text().then(function(t) {
+              throw new Error(t || ('HTTP ' + res.status));
+            });
+          }
+          return res.json();
+        })
+        .then(applyHostScan)
+        .catch(function(err) {
+          if (errEl) {
+            errEl.style.display = '';
+            errEl.textContent = 'Scan failed: ' + (err.message || String(err));
+          }
+        })
+        .finally(function() {
+          btn.disabled = false;
+          btn.textContent = prevLabel;
+        });
+    });
+  });
+})();
+</script>
 {% endblock %}

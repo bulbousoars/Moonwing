@@ -1,0 +1,20 @@
+# Overlay for Moonwing on secops (192.168.1.215).
+# Usage on the server (from the Moonwing git checkout):
+#   docker compose -f docker-compose.yml -f deploy/secops/docker-compose.secops.yml --profile app up -d --build
+#
+# Read-only host PATH peek for System → Host AI tools (stat only).
+
+services:
+  moonwing-api:
+    volumes:
+      - /usr/local/bin:/host-probe/usr/local/bin:ro
+      - /usr/bin:/host-probe/usr/bin:ro
+      - /bin:/host-probe/bin:ro
+    environment:
+      MOONWING_HOST_CLI_SCAN_DIRS: /host-probe/usr/local/bin,/host-probe/usr/bin,/host-probe/bin
+
+  # portainer-agent already binds host :9001 on secops (override base 9001:9001 mapping)
+  minio:
+    ports: !override
+      - "9000:9000"
+      - "9011:9001"
