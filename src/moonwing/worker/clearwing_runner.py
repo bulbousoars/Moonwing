@@ -210,6 +210,7 @@ def build_clearwing_command(
             "-o", "json",       # JSON output
             "-m", model,
             "--yolo",           # auto-approve all actions
+            "--skip-trust",      # non-interactive runs execute from worker temp dirs
         ]
     elif provider == "ollama":
         # For ollama, use codex CLI pointed at local endpoint

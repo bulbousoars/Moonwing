@@ -11,8 +11,6 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "manage_users",
         "manage_service_accounts",
         "manage_privileged_access",
-        "manage_sensors",
-        "system_updates",
     },
     "security_engineer": {
         "view",
@@ -20,7 +18,6 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "manage_targets",
         "manage_credentials",
         "manage_runtime_profiles",
-        "manage_sensors",
     },
     "operator": {
         "view",
@@ -74,6 +71,4 @@ def permission_for_request(path: str, method: str) -> str | None:
         return "launch_scan" if method not in {"GET", "HEAD", "OPTIONS"} else "view"
     if path.startswith("/api/findings") or path.startswith("/api/artifacts"):
         return "view"
-    if path.startswith("/api/system"):
-        return "system_updates"
     return "view"

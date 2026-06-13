@@ -12,5 +12,3 @@ class SourceInputKind(StrEnum):
     REPO = "repo"
     URL = "url"
     PATH = "path"
-    SBOM = "sbom"
-    BINARY = "binary"

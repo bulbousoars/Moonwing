@@ -1,225 +1,303 @@
 {% extends "base.html" %}
 {% block title %}Launch Scan - Moonwing{% endblock %}
 {% block content %}
+{% set chosen_job = selected.job_family if selected and selected.job_family else 'network_scan' %}
+{% set chosen_target = selected.target_id if selected and selected.target_id else preselect_target %}
+{% set chosen_user = selected.user_id if selected and selected.user_id else '' %}
+{% set chosen_profile = selected.runtime_profile_id if selected and selected.runtime_profile_id else '' %}
+{% set chosen_provider = selected.provider if selected and selected.provider else 'openai' %}
+{% set chosen_mode = selected.execution_mode if selected and selected.execution_mode else 'api' %}
+{% set chosen_model = selected.model if selected and selected.model else '' %}
+{% set chosen_credential = selected.credential_id if selected and selected.credential_id else '' %}
 <div class="page-header">
   <h1>Launch Scan</h1>
-  <p>Choose whether Moonwing should inspect a reachable service or analyze source material.</p>
+  <p>Choose scan inputs and the exact AI runtime Moonwing should use.</p>
 </div>
 
 {% if error %}
-<div class="probe-result error" style="max-width:760px; margin-bottom:16px;">{{ error }}</div>
+<div class="alert alert-error">{{ error }}</div>
 {% endif %}
 
-<div class="detail-card" style="max-width:760px">
-  <form method="post" action="/runs/new">
-    <div class="form-group">
-      <label for="job_family">Job Family</label>
-      <select id="job_family" name="job_family" required>
-        <option value="network_scan">Network Scan</option>
-        <option value="source_hunt">Source Hunt</option>
-      </select>
-      <div class="job-family-help">
-        <div>
+<div class="detail-card launch-scan-card">
+  <form method="post" action="/runs/new" id="launch-scan-form" novalidate>
+    <section class="launch-section">
+      <h2>Scan Type</h2>
+      <div class="scan-type-grid" role="radiogroup" aria-label="Scan Type">
+        <label class="scan-type-card">
+          <input type="radio" name="job_family" value="network_scan" {% if chosen_job == 'network_scan' %}checked{% endif %} required>
+          <span class="scan-type-check">✓</span>
           <strong>Network Scan</strong>
           <span>What is exposed and reachable. Use for websites, hosts, VMs, and services.</span>
-        </div>
-        <div>
+        </label>
+        <label class="scan-type-card">
+          <input type="radio" name="job_family" value="source_hunt" {% if chosen_job == 'source_hunt' %}checked{% endif %} required>
+          <span class="scan-type-check">✓</span>
           <strong>Source Hunt</strong>
           <span>What is wrong in the code. Use for repositories, binaries, SBOMs, and source artifacts.</span>
+        </label>
+      </div>
+    </section>
+
+    <div class="launch-form-grid">
+      <div class="form-group" data-required-field>
+        <label for="target_id">Target</label>
+        <select id="target_id" name="target_id" required>
+          <option value="">Select target</option>
+          {% for target in targets %}
+          <option value="{{ target.id }}" {% if chosen_target == target.id %}selected{% endif %}>{{ target.display_name }} ({{ target.target_type }})</option>
+          {% endfor %}
+        </select>
+        <small class="field-error" hidden>None found, please add in settings.</small>
+      </div>
+
+      <div class="form-group" data-required-field>
+        <label for="user_id">Run As</label>
+        <select id="user_id" name="user_id" required>
+          <option value="">Select user</option>
+          {% for user in users %}
+          <option value="{{ user.id }}" {% if chosen_user == user.id %}selected{% endif %}>{{ user.display_name }} ({{ user.email }})</option>
+          {% endfor %}
+        </select>
+        <small class="field-error" hidden>None found, please add in settings.</small>
+      </div>
+
+      <div class="form-group" data-required-field>
+        <label for="runtime_profile_id">Runtime Profile</label>
+        <select id="runtime_profile_id" name="runtime_profile_id" required>
+          <option value="">Select runtime profile</option>
+          {% for profile in profiles %}
+          <option value="{{ profile.id }}" {% if chosen_profile == profile.id %}selected{% endif %}>{{ profile.name }}</option>
+          {% endfor %}
+        </select>
+        <small class="field-error" hidden>None found, please add in settings.</small>
+      </div>
+
+      <div class="form-group" data-required-field>
+        <label for="provider">AI Provider</label>
+        <select id="provider" name="provider" required>
+          <option value="">Select provider</option>
+          {% for provider in ai_providers %}
+          <option value="{{ provider.value }}" {% if chosen_provider == provider.value %}selected{% endif %}>{{ provider.label }}</option>
+          {% endfor %}
+        </select>
+        <small class="field-error" hidden>None found, please add in settings.</small>
+      </div>
+
+      <div class="form-group" data-required-field>
+        <label for="execution_mode">AI Execution Mode</label>
+        <select id="execution_mode" name="execution_mode" required data-selected="{{ chosen_mode }}">
+          <option value="">Select execution mode</option>
+        </select>
+        <small class="field-error" hidden>None found, please add in settings.</small>
+      </div>
+
+      <div class="form-group" data-required-field>
+        <label for="ai_model">AI Model</label>
+        <div class="model-discovery-row">
+          <select id="ai_model" name="model" required data-selected="{{ chosen_model }}">
+            <option value="">Select model</option>
+          </select>
+          <button type="button" class="btn btn-sm model-discover-button" id="discover-models">
+            <span class="button-spinner" aria-hidden="true"></span>
+            <span class="button-label">Discover</span>
+          </button>
         </div>
+        <small class="field-error" hidden>None discovered. Check settings or CLI login.</small>
+      </div>
+
+      <div class="form-group" data-required-field>
+        <label for="credential_id">AI Credential</label>
+        <input type="hidden" id="credential_id_hidden" name="credential_id" value="{{ chosen_credential }}" disabled>
+        <select id="credential_id" name="credential_id" required data-selected="{{ chosen_credential }}">
+          <option value="">Select credential</option>
+        </select>
+        <small class="field-error" hidden>None found, please add in settings.</small>
+        <small class="field-note" id="credential-cli-note" hidden>CLI mode uses the worker's logged-in CLI session.</small>
       </div>
     </div>
 
-    <div class="form-group">
-      <label for="target_id">Target</label>
-      <select id="target_id" name="target_id">
-        <option value="">No saved target</option>
-        {% for target in targets %}
-        <option value="{{ target.id }}" {% if preselect_target == target.id %}selected{% endif %}>{{ target.display_name }} ({{ target.target_type }})</option>
-        {% endfor %}
-      </select>
+    <div class="launch-actions">
+      <button type="submit" class="btn btn-primary" id="launch-scan-submit" disabled>Launch Scan</button>
     </div>
-
-    <div class="form-group">
-      <label for="user_id">Run As</label>
-      <select id="user_id" name="user_id" required>
-        {% for user in users %}
-        <option value="{{ user.id }}">{{ user.display_name }} ({{ user.email }})</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label for="execution_mode">Execution Mode</label>
-      <select id="execution_mode" name="execution_mode">
-        <option value="api">API — direct call to the provider's HTTP API using the credential's API key</option>
-        <option value="cli">CLI — invokes the local claude/codex/gemini binary; uses your local login (subscription)</option>
-      </select>
-      <small style="color:var(--text-muted)">Switch between modes to see which providers each one supports.</small>
-    </div>
-
-    {% set provider_labels = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'google': 'Google', 'openrouter': 'OpenRouter', 'ollama': 'Ollama'} %}
-    <div class="form-group">
-      <label for="provider">Provider</label>
-      <select id="provider" name="provider">
-        {% for key, label in provider_labels.items() %}
-        <option value="{{ key }}"
-          data-api-available="{{ '1' if key in api_available_providers else '0' }}"
-          data-cli-available="{{ '1' if key in cli_available_providers else '0' }}"
-          data-cli-binary="{{ cli_binaries.get(key, '') }}">{{ label }}</option>
-        {% endfor %}
-      </select>
-      <small id="provider_hint" style="color:var(--text-muted)"></small>
-    </div>
-
-    <div class="form-group">
-      <label for="model">Model</label>
-      <select id="model" name="model" required></select>
-      <small style="color:var(--text-muted)">Lists are starter sets — verify against each vendor's official docs.</small>
-    </div>
-
-    <div class="form-group" id="credential_group">
-      <label>Credential</label>
-      <input type="hidden" id="credential_id" name="credential_id" value="">
-      <div id="credential_display" style="padding:8px 10px; border:1px solid var(--border, #ccc); border-radius:4px; background:var(--bg-muted, #f7f7f7);"></div>
-      <small id="credential_hint" style="color:var(--text-muted)"></small>
-    </div>
-
-    <div class="form-group">
-      <label for="runtime_profile_id">Runtime Profile</label>
-      <select id="runtime_profile_id" name="runtime_profile_id" required>
-        {% for profile in profiles %}
-        <option value="{{ profile.id }}">{{ profile.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <button type="submit" class="btn btn-primary" id="launch_btn">Launch Scan</button>
   </form>
 </div>
 
 <script>
-  const PROVIDER_MODELS = {{ provider_models|tojson }};
-  const INITIAL_PROVIDER = {{ initial_provider|tojson }};
-  const CREDENTIALS = {{ credentials|tojson }};
+(function () {
+  var aiOptions = {{ ai_options|tojson }};
+  var credentials = {{ credentials|tojson }};
+  var provider = document.getElementById('provider');
+  var mode = document.getElementById('execution_mode');
+  var model = document.getElementById('ai_model');
+  var credential = document.getElementById('credential_id');
+  var credentialHidden = document.getElementById('credential_id_hidden');
+  var credentialCliNote = document.getElementById('credential-cli-note');
+  var discoverButton = document.getElementById('discover-models');
+  var discoverButtonLabel = discoverButton ? discoverButton.querySelector('.button-label') : null;
+  var submit = document.getElementById('launch-scan-submit');
+  var form = document.getElementById('launch-scan-form');
 
-  function _modeIs(value) { return document.getElementById('execution_mode').value === value; }
-
-  function _refreshProviderOptions() {
-    const providerEl = document.getElementById('provider');
-    const mode = document.getElementById('execution_mode').value;
-    let firstEnabled = null;
-    let currentSelected = providerEl.value;
-    let currentStillEnabled = false;
-
-    Array.from(providerEl.options).forEach(opt => {
-      const apiOk = opt.dataset.apiAvailable === '1';
-      const cliOk = opt.dataset.cliAvailable === '1';
-      const enabled = (mode === 'api') ? apiOk : cliOk;
-      opt.disabled = !enabled;
-      opt.style.color = enabled ? '' : 'var(--text-muted, #999)';
-      // Suffix (no credential / requires X CLI) when disabled — undecorated when enabled.
-      const baseLabel = opt.textContent.split(' — ')[0];
-      if (enabled) {
-        opt.textContent = baseLabel;
-      } else {
-        const reason = (mode === 'api') ? 'no credential' : 'no CLI binary mapped';
-        opt.textContent = baseLabel + ' — ' + reason;
-      }
-      if (enabled) {
-        if (firstEnabled === null) firstEnabled = opt.value;
-        if (opt.value === currentSelected) currentStillEnabled = true;
-      }
-    });
-
-    if (!currentStillEnabled && firstEnabled !== null) {
-      providerEl.value = firstEnabled;
-    }
-    _refreshProviderHint();
-    _populateModelOptions();
-    _refreshCredentialFilter();
+  function setDiscoverLoading(isLoading) {
+    discoverButton.disabled = isLoading;
+    discoverButton.classList.toggle('is-loading', isLoading);
+    if (discoverButtonLabel) discoverButtonLabel.textContent = isLoading ? 'Discovering' : 'Discover';
   }
 
-  function _refreshProviderHint() {
-    const providerEl = document.getElementById('provider');
-    const opt = providerEl.options[providerEl.selectedIndex];
-    const hint = document.getElementById('provider_hint');
-    if (!opt) { hint.textContent = ''; return; }
-    if (_modeIs('cli')) {
-      const bin = opt.dataset.cliBinary;
-      hint.textContent = bin
-        ? 'CLI mode will invoke the "' + bin + '" binary on the Moonwing host. Make sure it is installed and authenticated.'
-        : 'CLI mode is unavailable for this provider.';
-    } else {
-      hint.textContent = (providerEl.value === 'ollama')
-        ? 'Ollama runs locally — no API key required.'
-        : 'API mode uses the credential below to authenticate.';
-    }
-  }
-
-  function _populateModelOptions() {
-    const provider = document.getElementById('provider').value;
-    const modelEl = document.getElementById('model');
-    const models = PROVIDER_MODELS[provider] || [];
-    modelEl.innerHTML = '';
-    if (models.length === 0) {
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = '(no models registered for this provider)';
-      opt.disabled = true;
-      modelEl.appendChild(opt);
-      return;
-    }
-    models.forEach((m, i) => {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = m;
-      if (i === 0) opt.selected = true;
-      modelEl.appendChild(opt);
+  function setOptions(select, values, selectedValue, labelFor) {
+    select.innerHTML = '';
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = select.getAttribute('aria-label') || 'Select';
+    select.appendChild(placeholder);
+    values.forEach(function (value) {
+      var option = document.createElement('option');
+      option.value = value.value || value;
+      option.textContent = labelFor ? labelFor(value) : (value.label || value);
+      if (option.value === selectedValue) option.selected = true;
+      select.appendChild(option);
     });
   }
 
-  function _refreshCredentialFilter() {
-    const provider = document.getElementById('provider').value;
-    const mode = document.getElementById('execution_mode').value;
-    const credInput = document.getElementById('credential_id');
-    const display = document.getElementById('credential_display');
-    const hint = document.getElementById('credential_hint');
-    const launchBtn = document.getElementById('launch_btn');
-
-    const match = CREDENTIALS.find(c => c.provider === provider) || null;
-
-    if (match) {
-      credInput.value = match.id;
-      display.textContent = match.display_name + ' (' + match.provider + ')';
-      display.style.color = '';
-      hint.textContent = (mode === 'cli')
-        ? 'Auto-selected for ' + provider + '. CLI mode authenticates via your local login; this credential is recorded for audit.'
-        : 'Auto-selected for ' + provider + '. API mode will use this credential to authenticate.';
-      launchBtn.disabled = false;
-      launchBtn.title = '';
-    } else {
-      credInput.value = '';
-      display.textContent = 'No ' + provider + ' credential available';
-      display.style.color = 'var(--danger, #c0392b)';
-      const modeLabel = (mode === 'cli') ? 'CLI' : 'API';
-      hint.innerHTML = 'No <strong>' + provider + '</strong> credential exists for ' + modeLabel + ' mode. <a href="/credentials/new">Add one</a>, or pick a different provider/mode.';
-      launchBtn.disabled = true;
-      launchBtn.title = 'No matching credential — add one or pick a different provider/mode.';
-    }
+  function markField(select, hasChoices) {
+    var group = select.closest('[data-required-field]');
+    if (!group) return;
+    var error = group.querySelector('.field-error');
+    var inactive = select.disabled;
+    var invalid = !inactive && (!hasChoices || !select.value);
+    group.classList.toggle('field-invalid', invalid);
+    if (error) error.hidden = inactive || hasChoices;
   }
 
-  // Wire up listeners and run once on load.
-  document.getElementById('execution_mode').addEventListener('change', _refreshProviderOptions);
-  document.getElementById('provider').addEventListener('change', () => { _refreshProviderHint(); _populateModelOptions(); _refreshCredentialFilter(); });
+  function syncScanCards() {
+    Array.prototype.forEach.call(document.querySelectorAll('.scan-type-card'), function (card) {
+      var input = card.querySelector('input');
+      card.classList.toggle('selected', input.checked);
+    });
+  }
 
-  // Set initial provider selection BEFORE the first refresh so we land on a working default.
-  (function() {
-    const providerEl = document.getElementById('provider');
-    for (const opt of providerEl.options) {
-      if (opt.value === INITIAL_PROVIDER) { opt.selected = true; break; }
+  function availableModels(provider, mode) {
+    if (!provider || !mode) return [];
+    return ((aiOptions[provider] || {})[mode] || []).slice().sort();
+  }
+
+  function availableCredentials(provider, mode, model) {
+    if (!provider || !mode || !model) return [];
+    return credentials.filter(function (credential) {
+      return credential.provider === provider
+        && credential.execution_modes.indexOf(mode) !== -1
+        && (credential.model_options[mode] || []).indexOf(model) !== -1;
+    });
+  }
+
+  function syncModes() {
+    var selectedMode = mode.value || mode.dataset.selected || '';
+    var providerOptions = aiOptions[provider.value] || {};
+    var modes = Object.keys(providerOptions).map(function (value) {
+      return {value: value, label: value.toUpperCase()};
+    });
+    setOptions(mode, modes, selectedMode);
+    mode.dataset.selected = '';
+    if (!mode.value && modes.length === 1) mode.value = modes[0].value;
+    markField(mode, modes.length > 0);
+    syncModels();
+  }
+
+  function syncModels() {
+    var selectedModel = model.value || model.dataset.selected || '';
+    var models = availableModels(provider.value, mode.value);
+    setOptions(model, models, selectedModel);
+    model.dataset.selected = '';
+    if (!model.value && models.length === 1) model.value = models[0];
+    markField(model, models.length > 0);
+    syncCredentials();
+  }
+
+  function syncCredentials() {
+    var selectedCredential = credential.value || credential.dataset.selected || '';
+    var matches = availableCredentials(provider.value, mode.value, model.value);
+    var cliMode = mode.value === 'cli';
+    setOptions(credential, matches, selectedCredential, function (item) {
+      return item.display_name;
+    });
+    credential.dataset.selected = '';
+    credential.disabled = cliMode;
+    credential.required = !cliMode;
+    credentialHidden.disabled = true;
+    credentialHidden.value = '';
+    if (cliMode) {
+      credential.removeAttribute('name');
+    } else {
+      credential.setAttribute('name', 'credential_id');
     }
-  })();
-  _refreshProviderOptions();
+    if (credentialCliNote) credentialCliNote.hidden = !cliMode;
+    var group = credential.closest('[data-required-field]');
+    if (group) group.classList.toggle('field-disabled', cliMode);
+    markField(credential, cliMode || matches.length > 0);
+    updateSubmit();
+  }
+
+  function discoverModels() {
+    if (!provider.value || !mode.value) return;
+    setDiscoverLoading(true);
+    var body = new URLSearchParams();
+    body.set('provider', provider.value);
+    body.set('execution_mode', mode.value);
+    body.set('credential_id', credential.value || credentialHidden.value || '');
+    fetch('/runs/models/discover', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString()
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (result) {
+        credentials = result.credentials || credentials;
+        model.dataset.selected = '';
+        setOptions(model, result.models || [], '');
+        if ((result.models || []).length === 1) model.value = result.models[0];
+        markField(model, (result.models || []).length > 0);
+        syncCredentials();
+      })
+      .catch(function () {
+        markField(model, false);
+      })
+      .finally(function () {
+        setDiscoverLoading(false);
+        updateSubmit();
+      });
+  }
+
+  function updateSubmit() {
+    var required = Array.prototype.slice.call(form.querySelectorAll('[required]'));
+    var complete = required.every(function (field) {
+      if (field.disabled) return true;
+      if (field.type === 'radio') {
+        return form.querySelector('input[name="' + field.name + '"]:checked');
+      }
+      return Boolean(field.value);
+    });
+    submit.disabled = !complete;
+    Array.prototype.forEach.call(form.querySelectorAll('select[required]'), function (select) {
+      if (select.id !== 'execution_mode' && select.id !== 'ai_model' && select.id !== 'credential_id') {
+        markField(select, select.options.length > 1);
+      }
+    });
+  }
+
+  provider.addEventListener('change', syncModes);
+  mode.addEventListener('change', syncModels);
+  model.addEventListener('change', syncCredentials);
+  credential.addEventListener('change', updateSubmit);
+  discoverButton.addEventListener('click', discoverModels);
+  Array.prototype.forEach.call(form.querySelectorAll('select, input[type="radio"]'), function (field) {
+    field.addEventListener('change', function () {
+      syncScanCards();
+      updateSubmit();
+    });
+  });
+
+  syncScanCards();
+  syncModes();
+  updateSubmit();
+})();
 </script>
 {% endblock %}

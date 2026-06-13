@@ -1421,6 +1421,86 @@ table {
   text-transform: uppercase;
 }
 
+.run-report-panel {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.run-report-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.run-report-header h2 {
+  font-size: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.run-report-header p,
+.run-report-grid p,
+.run-report-section li {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.run-report-score {
+  min-width: 5.5rem;
+  text-align: right;
+}
+
+.run-report-score span {
+  display: block;
+  color: var(--text);
+  font-size: 1.75rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.run-report-score small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.run-report-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.run-report-grid h3,
+.run-report-section h3 {
+  margin-bottom: 0.55rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.report-severity-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.run-report-section {
+  margin-top: 1.1rem;
+}
+
+.run-report-section ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
 thead th {
   text-align: left;
   padding: 0.65rem 1.25rem;
@@ -1722,6 +1802,21 @@ tbody tr:last-child td { border-bottom: none; }
 .inline-delete-form {
   display: inline-flex;
   margin: 0;
+}
+
+.inline-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 /* ── Forms ─────────────────────────────────────────── */
@@ -2857,6 +2952,215 @@ tbody tr:last-child td { border-bottom: none; }
   margin-top: 0.5rem;
 }
 
+.launch-scan-card {
+  max-width: 900px;
+}
+
+.launch-section {
+  margin-bottom: 1.25rem;
+}
+
+.launch-section h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.scan-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.scan-type-card {
+  position: relative;
+  display: grid;
+  gap: 0.4rem;
+  min-height: 128px;
+  padding: 1rem;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0)),
+    var(--bg-card);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  cursor: pointer;
+}
+
+.scan-type-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scan-type-card strong {
+  font-size: 0.98rem;
+}
+
+.scan-type-card span:not(.scan-type-check) {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.scan-type-card.selected {
+  border-color: var(--success);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--success) 12%, transparent), rgba(255,255,255,0)),
+    var(--bg-card);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 55%, transparent);
+}
+
+.scan-type-check {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  display: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--success);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.scan-type-card.selected .scan-type-check {
+  display: grid;
+}
+
+.launch-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.launch-form-grid .form-group {
+  margin-bottom: 0;
+}
+
+.model-discovery-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.model-discover-button {
+  min-width: 7.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.button-spinner {
+  display: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: button-spin 0.72s linear infinite;
+}
+
+.model-discover-button.is-loading .button-spinner {
+  display: inline-block;
+}
+
+.cli-tool-update-button {
+  min-width: 9.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.cli-tool-update-button.is-loading .button-spinner {
+  display: inline-block;
+}
+
+.cli-tool-check-button {
+  min-width: 8.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.cli-tool-check-button.is-loading .button-spinner {
+  display: inline-block;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.field-error {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.field-error[hidden],
+.field-note[hidden] {
+  display: none;
+}
+
+.field-invalid select {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger);
+}
+
+.field-disabled select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.field-disabled .field-note {
+  color: var(--text-muted);
+}
+
+.cli-tool-output {
+  margin-top: 0.4rem;
+}
+
+.cli-tool-output summary {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.cli-tool-output pre {
+  max-width: 28rem;
+  max-height: 12rem;
+  margin-top: 0.4rem;
+  padding: 0.65rem;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+}
+
+.launch-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.launch-actions .btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 /* ── Details element (advanced options) ────────────── */
 details summary {
   cursor: pointer;
@@ -2991,6 +3295,8 @@ details summary:hover {
   .notif-form-grid,
   .notif-field-group,
   .notif-field-pair,
+  .launch-form-grid,
+  .scan-type-grid,
   .job-family-help,
   .notif-preference-row,
   .privileged-grant-row {

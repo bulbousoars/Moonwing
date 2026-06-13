@@ -9,9 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from moonwing.api.deps import _get_session_factory, _get_settings
 from moonwing.api.routes.credentials import router as credentials_router
 from moonwing.api.routes.dashboard import router as dashboard_router
-from moonwing.api.routes.runs import router as runs_router
 from moonwing.api.routes.sensors import router as sensor_router
-from moonwing.api.routes.system_updates_api import router as system_updates_router
 from moonwing.db.models import User
 from moonwing.services.auth import parse_session_token
 from moonwing.services.iam import authenticate_service_token, bootstrap_admin
@@ -114,9 +112,7 @@ def health():
     return {"ok": True}
 
 app.include_router(credentials_router, prefix='/api/credentials', tags=['credentials'])
-app.include_router(runs_router, prefix='/api/runs', tags=['runs'])
 app.include_router(sensor_router, prefix='/api/sensors', tags=['sensors'])
-app.include_router(system_updates_router, prefix='/api/system', tags=['system'])
 
 # Dashboard (HTML)
 app.include_router(dashboard_router)

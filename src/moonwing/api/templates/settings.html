@@ -1,17 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Runtime Settings — Moonwing{% endblock %}
+{% block title %}Configuration — Moonwing{% endblock %}
 {% block content %}
 <div class="breadcrumb">
-  <a href="/">Dashboard</a><span class="sep">/</span><span class="current">Runtime Settings</span>
+  <a href="/">Dashboard</a><span class="sep">/</span><span class="current">Configuration</span>
 </div>
 <div class="page-header">
-  <h1>Runtime Settings</h1>
+  <h1>Configuration</h1>
   <p>Manage targets, credentials, and runtime profiles</p>
 </div>
 
 <div class="settings-tabs">
   <button class="settings-tab active" onclick="showTab('targets')" id="tab-targets">Targets</button>
   <button class="settings-tab" onclick="showTab('credentials')" id="tab-credentials">Credentials</button>
+  <button class="settings-tab" onclick="showTab('models')" id="tab-models">Models</button>
+  <button class="settings-tab" onclick="showTab('cli-tools')" id="tab-cli-tools">CLI Tools</button>
   <button class="settings-tab" onclick="showTab('profiles')" id="tab-profiles">Runtime Profiles</button>
 </div>
 
@@ -78,6 +80,105 @@
 {% endif %}
 </div>
 
+<!-- Models -->
+<div id="panel-models" class="settings-panel" style="display:none">
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ ai_models|length }} model{{ 's' if ai_models|length != 1 }}</h2>
+    <div class="toolbar-actions">
+      <form method="post" action="/settings/models/discover-provider" class="inline-form">
+        <select name="provider">
+          {% for provider in ai_providers %}
+          <option value="{{ provider.value }}">{{ provider.label }}</option>
+          {% endfor %}
+        </select>
+        <select name="execution_mode">
+          <option value="api">API</option>
+          <option value="cli">CLI</option>
+        </select>
+        <button type="submit" class="btn btn-sm">Discover Provider</button>
+      </form>
+      <form method="post" action="/settings/models/discover-all" class="inline-form">
+        <button type="submit" class="btn btn-primary btn-sm">Discover All</button>
+      </form>
+    </div>
+  </div>
+  {% if ai_models %}
+  <table>
+    <thead><tr><th>Provider</th><th>Mode</th><th>Model</th><th>Source</th><th>Status</th><th>Last Discovered</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for model in ai_models %}
+      <tr>
+        <td><span class="provider-tag {{ model.provider }}"><span class="dot"></span>{{ model.provider }}</span></td>
+        <td>{{ model.execution_mode|upper }}</td>
+        <td class="uuid">{{ model.model_id }}</td>
+        <td>{{ model.source }}</td>
+        <td>{% if model.is_enabled %}<span class="badge badge-info">Enabled</span>{% else %}<span class="badge">Disabled</span>{% endif %}</td>
+        <td><span class="ts" data-ts="{{ model.last_discovered_at }}">{{ model.last_discovered_at[:19] if model.last_discovered_at else '—' }}</span></td>
+        <td>
+          {% if model.is_enabled %}
+          <form method="post" action="/settings/models/{{ model.id }}/disable" class="inline-form"><button type="submit" class="btn btn-sm">Disable</button></form>
+          {% else %}
+          <form method="post" action="/settings/models/{{ model.id }}/enable" class="inline-form"><button type="submit" class="btn btn-sm">Enable</button></form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><h3>No models discovered</h3><p>None discovered. Check settings or CLI login.</p></div>
+  {% endif %}
+</div>
+</div>
+
+<!-- CLI Tools -->
+<div id="panel-cli-tools" class="settings-panel" style="display:none">
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>{{ cli_tools|length }} CLI tool{{ 's' if cli_tools|length != 1 }}</h2>
+    <form method="post" action="/settings/cli-tools/check" class="inline-form cli-tool-check-form">
+      <button type="submit" class="btn btn-sm cli-tool-check-button">
+        <span class="button-spinner" aria-hidden="true"></span>
+        <span class="button-label">Check Versions</span>
+      </button>
+    </form>
+  </div>
+  <table>
+    <thead><tr><th>Tool</th><th>Path</th><th>Version</th><th>Update Method</th><th>Last Update</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for tool in cli_tools %}
+      {% set update = tool.last_update or {} %}
+      <tr>
+        <td>{{ tool.label }}</td>
+        <td class="uuid">{% if tool.path %}{{ tool.path }}{% else %}Not installed{% endif %}</td>
+        <td>{{ tool.version or 'Unknown' }}</td>
+        <td>{{ tool.update_command }}</td>
+        <td>
+          {% if update.status %}
+          <span class="badge badge-{{ update.status }}">{{ update.status }}</span>
+          {% if update.finished_at %}<span class="ts" data-ts="{{ update.finished_at }}">{{ update.finished_at }}</span>{% endif %}
+          {% if update.output %}<details class="cli-tool-output"><summary>Output</summary><pre>{{ update.output }}</pre></details>{% endif %}
+          {% if update.message %}<p class="field-note">{{ update.message }}</p>{% endif %}
+          {% else %}
+          <span style="color:var(--text-muted)">Never</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/settings/cli-tools/{{ tool.name }}/update" class="inline-form cli-tool-update-form">
+            <button type="submit" class="btn btn-sm cli-tool-update-button {% if update.status == 'running' %}is-loading{% endif %}" {% if not tool.update_supported or update.status == 'running' %}disabled{% endif %}>
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span class="button-label">{{ 'Updating' if update.status == 'running' else 'Update CLI Version' }}</span>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+
 <!-- Runtime Profiles -->
 <div id="panel-profiles" class="settings-panel" style="display:none">
 {% if profiles %}
@@ -120,5 +221,27 @@ function showTab(name) {
 var params = new URLSearchParams(window.location.search);
 var tab = params.get('tab');
 if (tab && document.getElementById('panel-' + tab)) showTab(tab);
+
+document.querySelectorAll('.cli-tool-update-form').forEach(function(form) {
+  form.addEventListener('submit', function() {
+    var button = form.querySelector('.cli-tool-update-button');
+    if (!button) return;
+    button.disabled = true;
+    button.classList.add('is-loading');
+    var label = button.querySelector('.button-label');
+    if (label) label.textContent = 'Updating';
+  });
+});
+
+document.querySelectorAll('.cli-tool-check-form').forEach(function(form) {
+  form.addEventListener('submit', function() {
+    var button = form.querySelector('.cli-tool-check-button');
+    if (!button) return;
+    button.disabled = true;
+    button.classList.add('is-loading');
+    var label = button.querySelector('.button-label');
+    if (label) label.textContent = 'Checking';
+  });
+});
 </script>
 {% endblock %}

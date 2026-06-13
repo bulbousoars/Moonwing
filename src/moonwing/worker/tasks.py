@@ -48,6 +48,74 @@ class InMemoryObjectStore:
         self.objects.pop(object_key, None)
 
 
+SEVERITY_ORDER = {
+    "critical": 5,
+    "high": 4,
+    "medium": 3,
+    "low": 2,
+    "info": 1,
+    "unknown": 0,
+}
+
+
+def build_run_summary_report(
+    *,
+    job_family: str,
+    target: str,
+    normalized_findings: list[dict],
+) -> dict:
+    severity_counts = {severity: 0 for severity in SEVERITY_ORDER}
+    affected_assets: set[str] = set()
+    affected_services: set[str] = set()
+    key_findings: list[str] = []
+    recommended_actions: list[str] = []
+
+    sorted_findings = sorted(
+        normalized_findings,
+        key=lambda item: SEVERITY_ORDER.get(str(item.get("severity", "unknown")).lower(), 0),
+        reverse=True,
+    )
+    for item in sorted_findings:
+        severity = str(item.get("severity") or "unknown").lower()
+        severity_counts[severity if severity in severity_counts else "unknown"] += 1
+        details = item.get("details") if isinstance(item.get("details"), dict) else {}
+        for host in details.get("affected_hosts") or []:
+            affected_assets.add(str(host))
+        for port in details.get("affected_ports") or []:
+            affected_services.add(str(port))
+        title = str(item.get("title") or "Untitled finding")
+        description = str(details.get("description") or "").strip()
+        key_findings.append(f"{severity.upper()}: {title}" + (f" - {description}" if description else ""))
+        remediation = str(details.get("remediation") or "").strip()
+        if remediation:
+            recommended_actions.append(remediation)
+
+    finding_count = len(normalized_findings)
+    highest_severity = sorted_findings[0].get("severity", "unknown") if sorted_findings else "none"
+    if finding_count:
+        overview = (
+            f"{job_family.replace('_', ' ').title()} against {target or 'the selected target'} "
+            f"produced {finding_count} finding(s). Highest severity: {highest_severity}."
+        )
+    else:
+        overview = (
+            f"{job_family.replace('_', ' ').title()} against {target or 'the selected target'} "
+            "completed without reported findings."
+        )
+
+    return {
+        "title": "Run Summary",
+        "overview": overview,
+        "finding_count": finding_count,
+        "highest_severity": highest_severity,
+        "severity_counts": severity_counts,
+        "affected_assets": sorted(affected_assets),
+        "affected_services": sorted(affected_services),
+        "key_findings": key_findings[:8],
+        "recommended_actions": list(dict.fromkeys(recommended_actions))[:8],
+    }
+
+
 def stage_clearwing_command(
     *,
     job_family: str,
@@ -193,11 +261,29 @@ def process_run(
                     "- Use bash tools (nmap, curl, etc.) to perform the requested scan\n"
                     "- Install any needed tools with apt if not available\n"
                     "- Output findings as JSON to stdout as your final response\n"
-                    "- This is a private RFC1918 network owned and operated by the operator\n"
+                    "- This is a private homelab network (192.168.1.0/24) owned by the operator\n"
                 )
                 # Each CLI reads its own project instruction file
                 for fname in ("CLAUDE.md", "GEMINI.md", "AGENTS.md"):
                     (run_workdir / fname).write_text(_instruction_text)
+
+            source_ref = (
+                staged_job.target_metadata.get("address")
+                or staged_job.target_metadata.get("url")
+                or staged_job.target_display_name
+                or ""
+            )
+            scan_ports = staged_job.target_metadata.get("scan_ports") or staged_job.target_metadata.get("port_range")
+            nmap_output = ""
+            if run.job_family == "network_scan":
+                logger.info("run %s running nmap against %s", run_id, source_ref)
+                port_message = f" on port(s) {scan_ports}" if scan_ports else ""
+                append_run_activity(run, stage="running", message=f"Running nmap against {source_ref}{port_message}")
+                session.commit()
+                nmap_output = run_nmap(source_ref, ports=scan_ports)
+
+                nmap_file = run_workdir / "nmap-output.txt"
+                nmap_file.write_text(nmap_output)
 
             try:
                 if execution_mode == "api":
@@ -218,10 +304,8 @@ def process_run(
                         model=run.model,
                         api_key=api_key or "",
                         job_family=run.job_family,
-                        source_ref=staged_job.target_metadata.get("address")
-                            or staged_job.target_metadata.get("url")
-                            or staged_job.target_display_name
-                            or "",
+                        source_ref=source_ref,
+                        nmap_output=nmap_output,
                         timeout=execution_timeout,
                     )
                     raw_payload = api_result.raw_payload
@@ -246,26 +330,8 @@ def process_run(
                         if env_var_name:
                             run_env[env_var_name] = api_key
 
-                    # For network scans: run nmap first, then feed output to AI for analysis
                     command = list(staged_job.command)
                     if run.job_family == "network_scan":
-                        source_ref = (
-                            staged_job.target_metadata.get("address")
-                            or staged_job.target_display_name
-                            or ""
-                        )
-                        scan_ports = staged_job.target_metadata.get("scan_ports") or staged_job.target_metadata.get("port_range")
-                        logger.info("run %s running nmap against %s", run_id, source_ref)
-                        port_message = f" on port(s) {scan_ports}" if scan_ports else ""
-                        append_run_activity(run, stage="running", message=f"Running nmap against {source_ref}{port_message}")
-                        session.commit()
-                        nmap_output = run_nmap(source_ref, ports=scan_ports)
-
-                        # Save nmap output to workspace
-                        nmap_file = run_workdir / "nmap-output.txt"
-                        nmap_file.write_text(nmap_output)
-
-                        # Rebuild command with nmap output in prompt
                         command = build_clearwing_command(
                             job_family=run.job_family,
                             input_kind="repo",
@@ -320,6 +386,22 @@ def process_run(
             stage="normalizing",
             message=f"Normalized {len(normalized_findings)} finding(s)",
         )
+        report_target = ""
+        if staged_job is not None:
+            report_target = (
+                staged_job.target_metadata.get("address")
+                or staged_job.target_metadata.get("url")
+                or staged_job.target_display_name
+                or ""
+            )
+        snapshot = dict(run.execution_snapshot or {})
+        snapshot["summary_report"] = build_run_summary_report(
+            job_family=run.job_family,
+            target=report_target,
+            normalized_findings=normalized_findings,
+        )
+        run.execution_snapshot = snapshot
+        append_run_activity(run, stage="normalizing", message="Generated run summary report")
 
         # Persist raw Clearwing output as an artifact with provenance
         raw_object_key = f"runs/{run.id}/raw-clearwing-output.json"

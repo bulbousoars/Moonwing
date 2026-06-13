@@ -4,57 +4,13 @@
 <div class="page-header">
   <h1>Endpoint Sensors</h1>
   <p>Linux, Windows, and future macOS sensors enrolled with Moonwing</p>
-  {% if can_manage_sensors %}
-  <div class="page-actions page-actions-split">
-    <a href="/sensors/install" class="btn btn-primary">Download sensor installer</a>
-    <div class="page-actions-secondary">
-      <a href="/docs#tag/sensors" target="_blank" class="btn">Sensor API</a>
-    </div>
-  </div>
-  {% endif %}
 </div>
-
-<div class="kpi-rail">
-  <div class="kpi-cell">
-    <span class="kpi-label">Sensors</span>
-    <strong>{{ stats.total }}</strong>
-    <small>{{ stats.active }} active / {{ stats.stale }} stale</small>
-  </div>
-  <div class="kpi-cell">
-    <span class="kpi-label">Linux</span>
-    <strong>{{ stats.platform_counts.linux or 0 }}</strong>
-    <small>endpoints</small>
-  </div>
-  <div class="kpi-cell">
-    <span class="kpi-label">Windows</span>
-    <strong>{{ stats.platform_counts.windows or 0 }}</strong>
-    <small>endpoints</small>
-  </div>
-  <div class="kpi-cell">
-    <span class="kpi-label">macOS</span>
-    <strong>{{ stats.platform_counts.macos or 0 }}</strong>
-    <small>endpoints</small>
-  </div>
-  <div class="kpi-cell">
-    <span class="kpi-label">Events</span>
-    <strong>{{ stats.total_events }}</strong>
-    <small>{{ stats.total_queued_tasks }} queued tasks</small>
-  </div>
-</div>
-
-{% if not enrollment_configured and can_manage_sensors %}
-<div class="probe-result error">
-  <strong>Sensor enrollment is not configured.</strong>
-  Set <code>MOONWING_SENSOR_ENROLLMENT_TOKEN</code> in the manager's environment
-  and restart the API before generating an installer.
-</div>
-{% endif %}
 
 {% if sensors %}
 <div class="table-card sensors-table-card">
   <div class="table-card-header">
     <h2>{{ sensors|length }} sensor{{ 's' if sensors|length != 1 }}</h2>
-    <span class="text-muted">Click a row to see inventory, policy, and events</span>
+    <span class="text-muted">Policy is assigned by platform and labels</span>
   </div>
   <table>
     <thead>
@@ -71,7 +27,7 @@
     </thead>
     <tbody>
       {% for sensor in sensors %}
-      <tr data-href="/sensors/{{ sensor.id }}">
+      <tr>
         <td>
           <strong>{{ sensor.hostname }}</strong>
           <div class="uuid">{{ sensor.id[:8] }}...</div>
@@ -80,7 +36,7 @@
           <span class="badge badge-info">{{ sensor.platform }}</span>
           <div class="text-muted">{{ sensor.os_name or '-' }}</div>
         </td>
-        <td><span class="badge badge-{{ sensor.status_class }}">{{ sensor.status_label }}</span></td>
+        <td><span class="badge badge-{{ 'completed' if sensor.status == 'active' else 'info' }}">{{ sensor.status }}</span></td>
         <td>
           {% if sensor.labels %}
             {% for label in sensor.labels %}<span class="tag">{{ label }}</span>{% endfor %}
@@ -91,13 +47,7 @@
         <td>{{ sensor.sensor_version or '-' }}</td>
         <td>{{ sensor.queued_tasks }}</td>
         <td>{{ sensor.event_count }}</td>
-        <td>
-          {% if sensor.last_seen_at %}
-            <span data-ts="{{ sensor.last_seen_at }}">{{ sensor.last_seen_at[:19] }}</span>
-          {% else %}
-            <span class="text-muted">never</span>
-          {% endif %}
-        </td>
+        <td>{{ sensor.last_seen_at[:19] if sensor.last_seen_at else '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -106,15 +56,7 @@
 {% else %}
 <div class="empty-state">
   <h3>No endpoint sensors enrolled</h3>
-  <p>
-    {% if can_manage_sensors %}
-      <a href="/sensors/install" class="btn btn-primary">Download an installer</a>
-      to enroll your first endpoint, or POST to <code>/api/sensors/enroll</code> with
-      the manager's enrollment token.
-    {% else %}
-      Ask an administrator to install a Moonwing sensor on your endpoints.
-    {% endif %}
-  </p>
+  <p>Install a Moonwing sensor and enroll it against <code>/api/sensors/enroll</code>.</p>
 </div>
 {% endif %}
 {% endblock %}

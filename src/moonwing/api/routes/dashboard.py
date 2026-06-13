@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import json
 import secrets
-from dataclasses import asdict
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -19,12 +17,10 @@ from sqlalchemy.orm import Session
 
 from moonwing.api.deps import get_db
 from moonwing.api.deps import _get_settings
-from moonwing.services.ai_provider_probe import (
-    PROVIDER_CLI_BINARIES,
-    PROVIDER_DEFAULT_MODELS,
-    PROVIDER_MODELS,
-)
+from moonwing.services.ai_model_registry import list_enabled_models, list_models, replace_discovered_models, set_model_enabled
+from moonwing.services.ai_provider_probe import PROVIDER_DEFAULT_MODELS, discover_api_models, discover_cli_models
 from moonwing.services.auth import create_session_token, create_service_token, hash_password, hash_service_token, verify_password
+from moonwing.services.cli_tools import list_cli_tools, update_cli_tool
 from moonwing.services.crypto import CryptoError, decrypt_api_key, encrypt_api_key, mask_api_key
 from moonwing.services.finding_detail_display import build_finding_details, format_evidence_refs
 from moonwing.services.finding_enrichment import enrich_finding_display
@@ -48,7 +44,6 @@ from moonwing.services.oidc import (
     validate_oidc_claims,
 )
 from moonwing.services.management import build_management_summary
-from moonwing.services.npm_inventory_catalog import aggregate_npm_inventory_rows
 from moonwing.services.notifications import (
     ALL_EVENT_TYPES,
     EVENT_FINDING_REMEDIATED,
@@ -58,20 +53,14 @@ from moonwing.services.notifications import (
     EVENT_USER_PERMISSIONS_CHANGED,
     notify,
 )
-from moonwing.services.permissions import ASSIGNABLE_ROLES, can, require_role
-from moonwing.services.sensor_installer import (
-    InstallerConfigError,
-    build_windows_sensor_zip_bytes,
-    render_linux_installer,
-    render_windows_installer,
-)
+from moonwing.services.permissions import ASSIGNABLE_ROLES, require_role
 from moonwing.services.run_activity import ACTIVE_RUN_STATUSES, serialize_run_activity
-from moonwing.services.system_updates import apply_system_update, build_git_update_status
 from moonwing.services.targets import normalize_target_metadata
 from moonwing.services.user_origin import describe_user_origin
 from moonwing.db.models import (
     Artifact,
     AuditEvent,
+    AIModel,
     Credential,
     Finding,
     LdapConfig,
@@ -126,6 +115,243 @@ _STATE_TRANSITIONS = {
     'canceled': [],
     'needs_review': [],
 }
+
+
+AI_PROVIDER_LABELS = {
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "google": "Google Gemini",
+    "openrouter": "OpenRouter",
+    "ollama": "Ollama",
+}
+
+SUPPORTED_AI_MODES = {
+    "openai": ["api", "cli"],
+    "anthropic": ["api", "cli"],
+    "google": ["api", "cli"],
+    "openrouter": ["api"],
+    "ollama": ["api", "cli"],
+}
+
+
+def _discover_api_models_for_credential(credential: Credential) -> list[str]:
+    if credential.provider != "ollama" and not credential.encrypted_api_key:
+        return []
+    api_key = ""
+    if credential.encrypted_api_key:
+        try:
+            api_key = decrypt_api_key(credential.encrypted_api_key)
+        except CryptoError:
+            return []
+    result = discover_api_models(provider=credential.provider, api_key=api_key, timeout=4)
+    return result["models"] if result.get("ok") else []
+
+
+def _discover_cli_models_for_provider(provider: str) -> list[str]:
+    result = discover_cli_models(provider=provider, timeout=20, use_sudo=True)
+    return result["models"] if result.get("ok") else []
+
+
+def discover_models_for_selection(
+    db: Session,
+    *,
+    provider: str,
+    execution_mode: str,
+    credential_id: str = "",
+) -> dict:
+    provider = provider.strip().lower()
+    execution_mode = execution_mode.strip().lower()
+    if provider not in SUPPORTED_AI_MODES or execution_mode not in SUPPORTED_AI_MODES[provider]:
+        return {"ok": False, "models": [], "message": "None discovered. Check settings or CLI login."}
+
+    if execution_mode == "api":
+        credential: Credential | None = None
+        if credential_id.strip():
+            try:
+                credential = db.get(Credential, UUID(credential_id))
+            except ValueError:
+                credential = None
+        if credential is None:
+            credential = (
+                db.query(Credential)
+                .filter(Credential.provider == provider)
+                .order_by(Credential.display_name)
+                .first()
+            )
+        if not credential or credential.provider != provider:
+            return {"ok": False, "models": [], "message": "None discovered. Check settings or CLI login."}
+        models = _discover_api_models_for_credential(credential)
+        source = "api"
+    else:
+        models = _discover_cli_models_for_provider(provider)
+        source = "cli"
+
+    if not models:
+        return {"ok": False, "models": [], "message": "None discovered. Check settings or CLI login."}
+    replace_discovered_models(
+        db,
+        provider=provider,
+        execution_mode=execution_mode,
+        model_ids=models,
+        source=source,
+    )
+    db.commit()
+    enabled_models = list_enabled_models(db, provider=provider, execution_mode=execution_mode)
+    return {"ok": bool(enabled_models), "models": enabled_models, "message": ""}
+
+
+def _credential_options(db: Session, credential: Credential) -> dict:
+    provider = credential.provider
+    has_api_key = bool(credential.encrypted_api_key)
+    execution_modes = []
+    models = []
+    model_options: dict[str, list[str]] = {}
+    supported_modes = SUPPORTED_AI_MODES.get(provider, [])
+
+    if "api" in supported_modes and (has_api_key or provider == "ollama"):
+        registry_models = list_enabled_models(db, provider=provider, execution_mode="api")
+        model_options["api"] = registry_models
+        models.extend(registry_models)
+        execution_modes.append("api")
+    return {
+        "id": str(credential.id),
+        "display_name": credential.display_name,
+        "provider": provider,
+        "has_api_key": has_api_key,
+        "execution_modes": execution_modes,
+        "model_options": model_options,
+        "models": sorted(set(models), key=models.index),
+    }
+
+
+def _default_ai_selection(credentials: list[dict]) -> dict:
+    for credential in credentials:
+        for mode in credential["execution_modes"]:
+            mode_models = credential["model_options"].get(mode, [])
+            if mode_models:
+                return {
+                    "provider": credential["provider"],
+                    "execution_mode": mode,
+                    "model": mode_models[0],
+                    "credential_id": credential["id"],
+                }
+    return {}
+
+
+def _default_ai_selection_from_registry(db: Session) -> dict:
+    for provider, modes in SUPPORTED_AI_MODES.items():
+        for mode in modes:
+            models = list_enabled_models(db, provider=provider, execution_mode=mode)
+            if models:
+                return {
+                    "provider": provider,
+                    "execution_mode": mode,
+                    "model": models[0],
+                    "credential_id": "",
+                }
+    return {}
+
+
+def _run_form_context(
+    db: Session,
+    *,
+    target: str | None = None,
+    selected: dict | None = None,
+    error: str = "",
+) -> dict:
+    targets = [
+        {'id': str(t.id), 'display_name': t.display_name, 'target_type': t.target_type}
+        for t in db.query(Target).order_by(Target.display_name).all()
+    ]
+    users = [
+        {'id': str(u.id), 'display_name': u.display_name, 'email': u.email}
+        for u in db.query(User).order_by(User.display_name).all()
+    ]
+    credentials = [
+        _credential_options(db, c)
+        for c in db.query(Credential).order_by(Credential.display_name).all()
+    ]
+    profiles = [
+        {'id': str(p.id), 'name': p.name}
+        for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.name).all()
+    ]
+    effective_selected = dict(_default_ai_selection(credentials) or _default_ai_selection_from_registry(db))
+    effective_selected.update({key: value for key, value in (selected or {}).items() if value})
+    return {
+        'active': 'launch',
+        'targets': targets,
+        'users': users,
+        'credentials': credentials,
+        'profiles': profiles,
+        'preselect_target': target or '',
+        'ai_providers': [
+            {"value": value, "label": label}
+            for value, label in AI_PROVIDER_LABELS.items()
+        ],
+        'ai_options': {
+            provider: {
+                mode: list_enabled_models(db, provider=provider, execution_mode=mode)
+                for mode in modes
+            }
+            for provider, modes in SUPPORTED_AI_MODES.items()
+        },
+        'selected': effective_selected,
+        'error': error,
+    }
+
+
+def _validate_run_selection(
+    db: Session,
+    *,
+    job_family: str,
+    user_id: str,
+    credential_id: str,
+    runtime_profile_id: str,
+    provider: str,
+    model: str,
+    execution_mode: str,
+) -> tuple[User, Credential | None, RuntimeProfileRecord]:
+    if job_family not in {"network_scan", "source_hunt"}:
+        raise ValueError("Scan Type is required.")
+    if provider not in SUPPORTED_AI_MODES:
+        raise ValueError("AI Provider is required.")
+    if execution_mode not in SUPPORTED_AI_MODES[provider]:
+        raise ValueError("AI Execution Mode is required for the selected provider.")
+
+    try:
+        user_uuid = UUID(user_id)
+        profile_uuid = UUID(runtime_profile_id)
+    except ValueError as exc:
+        raise ValueError("All required selections must be chosen.") from exc
+
+    user = db.get(User, user_uuid)
+    profile = db.get(RuntimeProfileRecord, profile_uuid)
+    if not user or not profile:
+        raise ValueError("All required selections must be chosen.")
+
+    credential: Credential | None = None
+    if execution_mode == "cli" and not credential_id.strip():
+        if model not in list_enabled_models(db, provider=provider, execution_mode=execution_mode):
+            raise ValueError("AI Model is required for the selected provider and execution mode.")
+        return user, None, profile
+
+    if credential_id.strip():
+        try:
+            credential = db.get(Credential, UUID(credential_id))
+        except ValueError as exc:
+            raise ValueError("Please add a matching credential in settings.") from exc
+
+    if execution_mode == "api" and not credential:
+        raise ValueError("Please add a matching credential in settings.")
+
+    available = _credential_options(db, credential)
+    if (
+        credential.provider != provider
+        or execution_mode not in available["execution_modes"]
+        or model not in available["model_options"].get(execution_mode, [])
+    ):
+        raise ValueError("Credential is not available for the selected provider, execution mode, and model.")
+    return user, credential, profile
 
 
 @router.get('/login', response_class=HTMLResponse)
@@ -374,7 +600,7 @@ def _serialize_run(r: Run) -> dict:
         'model': r.model,
         'execution_mode': r.execution_mode or 'api',
         'user_id': str(r.user_id),
-        'credential_id': str(r.credential_id),
+        'credential_id': str(r.credential_id) if r.credential_id else None,
         'runtime_profile_id': str(r.runtime_profile_id),
         'target_id': str(r.target_id) if r.target_id else None,
         'execution_snapshot': r.execution_snapshot or {},
@@ -447,72 +673,9 @@ def runs_page(request: Request, db: Session = Depends(get_db)):
     return _render(request, 'runs.html', {'active': 'runs', 'runs': runs})
 
 
-SENSOR_STALE_AFTER = timedelta(minutes=5)
-_SEVERITY_BADGE = {
-    "critical": "critical",
-    "high": "high",
-    "medium": "medium",
-    "low": "low",
-    "info": "info",
-}
-_TASK_STATUS_BADGE = {
-    "queued": "info",
-    "running": "running",
-    "completed": "completed",
-    "failed": "critical",
-}
-
-
-def _sensor_status_badge(sensor: SensorEndpoint, now: datetime) -> tuple[str, str]:
-    """Return (label, css_class) for a sensor's effective health."""
-    if sensor.status != "active":
-        return sensor.status, "info"
-    if sensor.last_seen_at is None:
-        return "pending", "info"
-    last_seen = sensor.last_seen_at
-    if last_seen.tzinfo is None:
-        last_seen = last_seen.replace(tzinfo=timezone.utc)
-    if now - last_seen > SENSOR_STALE_AFTER:
-        return "stale", "high"
-    return "active", "completed"
-
-
-def _serialize_sensor_row(sensor: SensorEndpoint, *, event_count: int, queued: int, now: datetime) -> dict:
-    label, badge = _sensor_status_badge(sensor, now)
-    return {
-        'id': str(sensor.id),
-        'hostname': sensor.hostname,
-        'platform': sensor.platform,
-        'os_name': sensor.os_name,
-        'status': sensor.status,
-        'status_label': label,
-        'status_class': badge,
-        'sensor_version': sensor.sensor_version,
-        'labels': sensor.labels or [],
-        'last_seen_at': sensor.last_seen_at.isoformat() if sensor.last_seen_at else '',
-        'event_count': event_count,
-        'queued_tasks': queued,
-    }
-
-
-def _manager_base_url(request: Request) -> str:
-    return str(request.base_url).rstrip('/')
-
-
-def _mask_token(token: str) -> str:
-    if not token:
-        return ''
-    if len(token) <= 8:
-        return '•' * len(token)
-    return f"{token[:4]}{'•' * (len(token) - 8)}{token[-4:]}"
-
-
 @router.get('/sensors', response_class=HTMLResponse)
 def sensors_page(request: Request, db: Session = Depends(get_db)):
     _require(request, 'view')
-    now = datetime.now(timezone.utc)
-    settings = _get_settings()
-
     endpoints = db.query(SensorEndpoint).order_by(SensorEndpoint.last_seen_at.desc().nullslast()).limit(250).all()
     event_counts = dict(
         db.query(SensorEvent.sensor_id, func.count(SensorEvent.id))
@@ -526,327 +689,50 @@ def sensors_page(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     sensors = [
-        _serialize_sensor_row(
-            sensor,
-            event_count=event_counts.get(sensor.id, 0),
-            queued=queued_counts.get(sensor.id, 0),
-            now=now,
-        )
+        {
+            'id': str(sensor.id),
+            'hostname': sensor.hostname,
+            'platform': sensor.platform,
+            'os_name': sensor.os_name,
+            'status': sensor.status,
+            'sensor_version': sensor.sensor_version,
+            'labels': sensor.labels or [],
+            'last_seen_at': sensor.last_seen_at.isoformat() if sensor.last_seen_at else '',
+            'event_count': event_counts.get(sensor.id, 0),
+            'queued_tasks': queued_counts.get(sensor.id, 0),
+        }
         for sensor in endpoints
     ]
-
-    platform_counts: dict[str, int] = {"linux": 0, "windows": 0, "macos": 0}
-    active = 0
-    stale = 0
-    for s in sensors:
-        platform_counts[s['platform']] = platform_counts.get(s['platform'], 0) + 1
-        if s['status_label'] == 'active':
-            active += 1
-        elif s['status_label'] == 'stale':
-            stale += 1
-    total_events = db.query(func.count(SensorEvent.id)).scalar() or 0
-    total_queued = db.query(func.count(SensorTask.id)).filter(SensorTask.status == 'queued').scalar() or 0
-
-    current_user = getattr(request.state, 'current_user', None)
-    can_manage_sensors = can(current_user.get('role') if current_user else None, 'manage_sensors')
-
-    return _render(request, 'sensors.html', {
-        'active': 'sensors',
-        'sensors': sensors,
-        'stats': {
-            'total': len(sensors),
-            'active': active,
-            'stale': stale,
-            'platform_counts': platform_counts,
-            'total_events': total_events,
-            'total_queued_tasks': total_queued,
-        },
-        'enrollment_configured': bool(settings.sensor_enrollment_token),
-        'can_manage_sensors': can_manage_sensors,
-    })
-
-
-@router.get('/sensors/install', response_class=HTMLResponse)
-def sensor_install_page(request: Request):
-    _require(request, 'manage_sensors')
-    settings = _get_settings()
-    token = settings.sensor_enrollment_token or ''
-    return _render(request, 'sensor_install.html', {
-        'active': 'sensors',
-        'manager_url': _manager_base_url(request),
-        'enrollment_token': token,
-        'enrollment_token_masked': _mask_token(token),
-        'enrollment_configured': bool(token),
-    })
-
-
-@router.get('/sensors/install/linux.sh')
-def sensor_install_linux(request: Request):
-    _require(request, 'manage_sensors')
-    settings = _get_settings()
-    try:
-        body = render_linux_installer(
-            manager_url=_manager_base_url(request),
-            enrollment_token=settings.sensor_enrollment_token,
-        )
-    except InstallerConfigError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return PlainTextResponse(
-        body,
-        media_type='text/x-shellscript',
-        headers={'Content-Disposition': 'attachment; filename="moonwing-sensor-install.sh"'},
-    )
-
-
-@router.get('/sensors/install/windows.ps1')
-def sensor_install_windows(request: Request):
-    _require(request, 'manage_sensors')
-    settings = _get_settings()
-    try:
-        body = render_windows_installer(
-            manager_url=_manager_base_url(request),
-            enrollment_token=settings.sensor_enrollment_token,
-        )
-    except InstallerConfigError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return PlainTextResponse(
-        body,
-        media_type='text/x-powershell',
-        headers={'Content-Disposition': 'attachment; filename="moonwing-sensor-install.ps1"'},
-    )
-
-
-@router.get('/sensors/install/windows-bundle.zip')
-def sensor_install_windows_bundle(request: Request):
-    _require(request, 'manage_sensors')
-    settings = _get_settings()
-    try:
-        blob = build_windows_sensor_zip_bytes(
-            manager_url=_manager_base_url(request),
-            enrollment_token=settings.sensor_enrollment_token,
-        )
-    except InstallerConfigError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return Response(
-        content=blob,
-        media_type='application/zip',
-        headers={'Content-Disposition': 'attachment; filename="moonwing-sensor-windows.zip"'},
-    )
-
-
-@router.get('/sensors/{sensor_id}', response_class=HTMLResponse)
-def sensor_detail_page(sensor_id: UUID, request: Request, db: Session = Depends(get_db)):
-    _require(request, 'view')
-    sensor = db.get(SensorEndpoint, sensor_id)
-    if not sensor:
-        raise HTTPException(status_code=404, detail='Sensor not found')
-
-    now = datetime.now(timezone.utc)
-    label, _ = _sensor_status_badge(sensor, now)
-
-    event_count = db.query(func.count(SensorEvent.id)).filter(SensorEvent.sensor_id == sensor.id).scalar() or 0
-    queued = db.query(func.count(SensorTask.id)).filter(
-        SensorTask.sensor_id == sensor.id, SensorTask.status == 'queued'
-    ).scalar() or 0
-    running = db.query(func.count(SensorTask.id)).filter(
-        SensorTask.sensor_id == sensor.id, SensorTask.status == 'running'
-    ).scalar() or 0
-
-    recent_events = (
-        db.query(SensorEvent)
-        .filter(SensorEvent.sensor_id == sensor.id)
-        .order_by(SensorEvent.received_at.desc())
-        .limit(50)
-        .all()
-    )
-    events = []
-    for ev in recent_events:
-        payload_str = json.dumps(ev.payload or {}, sort_keys=True)
-        if len(payload_str) > 80:
-            payload_str = payload_str[:77] + '...'
-        events.append({
-            'received_at': ev.received_at.isoformat() if ev.received_at else '',
-            'event_type': ev.event_type,
-            'severity': ev.severity,
-            'severity_class': _SEVERITY_BADGE.get(ev.severity, 'info'),
-            'payload_preview': payload_str,
-        })
-
-    recent_tasks = (
-        db.query(SensorTask)
-        .filter(SensorTask.sensor_id == sensor.id)
-        .order_by(SensorTask.created_at.desc())
-        .limit(25)
-        .all()
-    )
-    tasks = [
-        {
-            'created_at': t.created_at.isoformat() if t.created_at else '',
-            'task_type': t.task_type,
-            'status': t.status,
-            'status_class': _TASK_STATUS_BADGE.get(t.status, 'info'),
-            'leased_at': t.leased_at.isoformat() if t.leased_at else '',
-            'completed_at': t.completed_at.isoformat() if t.completed_at else '',
-        }
-        for t in recent_tasks
-    ]
-
-    # Effective policy = default policy for the platform, overlaid by any
-    # custom policy stored on the sensor record.
-    from moonwing.services.sensors import DEFAULT_POLICIES
-    base_policy = dict(DEFAULT_POLICIES.get(sensor.platform, {}))
-    if sensor.policy:
-        base_policy.update(sensor.policy)
-
-    sensor_view = {
-        'id': str(sensor.id),
-        'hostname': sensor.hostname,
-        'platform': sensor.platform,
-        'os_name': sensor.os_name,
-        'status': label,
-        'sensor_version': sensor.sensor_version,
-        'labels': sensor.labels or [],
-        'enrolled_at': sensor.enrolled_at.isoformat() if sensor.enrolled_at else '',
-        'last_seen_at': sensor.last_seen_at.isoformat() if sensor.last_seen_at else '',
-        'event_count': event_count,
-        'queued_tasks': queued,
-        'running_tasks': running,
-        'inventory': sensor.inventory or {},
-        'network': sensor.network or {},
-        'effective_policy': base_policy,
-    }
-
-    current_user = getattr(request.state, 'current_user', None)
-    can_manage_sensors = can(current_user.get('role') if current_user else None, 'manage_sensors')
-
-    return _render(request, 'sensor_detail.html', {
-        'active': 'sensors',
-        'sensor': sensor_view,
-        'events': events,
-        'tasks': tasks,
-        'can_manage_sensors': can_manage_sensors,
-    })
-
-
-@router.post('/sensors/{sensor_id}/delete')
-def sensor_delete(sensor_id: UUID, request: Request, db: Session = Depends(get_db)):
-    _require(request, 'manage_sensors')
-    sensor = db.get(SensorEndpoint, sensor_id)
-    if not sensor:
-        raise HTTPException(status_code=404, detail='Sensor not found')
-    db.query(SensorTask).filter(SensorTask.sensor_id == sensor.id).delete(synchronize_session=False)
-    db.query(SensorEvent).filter(SensorEvent.sensor_id == sensor.id).delete(synchronize_session=False)
-    db.delete(sensor)
-    audit(
-        db,
-        action='sensor_delete',
-        resource_type='sensor',
-        actor_user_id=UUID(request.state.current_user['id']),
-        resource_id=str(sensor_id),
-    )
-    db.commit()
-    return RedirectResponse(url='/sensors', status_code=303)
-
-
-def _system_updates_page_context(settings) -> dict[str, object]:
-    gs = build_git_update_status(settings)
-    return {
-        'update_status': asdict(gs),
-        'update_can_apply': gs.apply_available_reason is None and gs.is_git_repository,
-    }
-
-
-@router.get('/system/updates', response_class=HTMLResponse)
-def system_updates_page(request: Request, applied: str | None = Query(None)):
-    _require(request, 'system_updates')
-    settings = _get_settings()
-    ctx = _system_updates_page_context(settings)
-    return _render(request, 'system_updates.html', {
-        'active': 'system_updates',
-        'update_applied_ok': applied == '1',
-        **ctx,
-    })
-
-
-@router.post('/system/updates/apply')
-def system_updates_apply(request: Request, db: Session = Depends(get_db), confirm: str = Form('')):
-    _require(request, 'system_updates')
-    settings = _get_settings()
-    if confirm.strip() != 'APPLY':
-        ctx = _system_updates_page_context(settings)
-        return _render(request, 'system_updates.html', {
-            'active': 'system_updates',
-            'apply_error': 'Type APPLY (all caps) in the confirmation box to run the upgrade.',
-            **ctx,
-        })
-    outcome = apply_system_update(settings)
-    audit(
-        db,
-        action='system_updates_apply',
-        resource_type='system',
-        actor_user_id=UUID(request.state.current_user['id']),
-        resource_id='moonwing',
-        outcome='success' if outcome.success else 'failure',
-        metadata={'message': outcome.message, 'steps': [s.model_dump() for s in outcome.steps]},
-    )
-    db.commit()
-    if outcome.success:
-        return RedirectResponse(url='/system/updates?applied=1', status_code=303)
-    ctx = _system_updates_page_context(_get_settings())
-    return _render(request, 'system_updates.html', {
-        'active': 'system_updates',
-        'last_apply': outcome.model_dump(),
-        **ctx,
-    })
-
-
-def _build_run_form_context(request: Request, db: Session, *, target: str = '', error: str = '') -> dict:
-    targets = [
-        {'id': str(t.id), 'display_name': t.display_name, 'target_type': t.target_type}
-        for t in db.query(Target).order_by(Target.display_name).all()
-    ]
-    users = [
-        {'id': str(u.id), 'display_name': u.display_name, 'email': u.email}
-        for u in db.query(User).order_by(User.display_name).all()
-    ]
-    credentials = [
-        {'id': str(c.id), 'display_name': c.display_name, 'provider': c.provider}
-        for c in db.query(Credential).order_by(Credential.display_name).all()
-    ]
-    profiles = [
-        {'id': str(p.id), 'name': p.name}
-        for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.name).all()
-    ]
-    api_available_providers = {c['provider'] for c in credentials} | {'ollama'}
-    cli_available_providers = set(PROVIDER_CLI_BINARIES.keys())
-    initial_provider = next(
-        (p for p in ['anthropic', 'openai', 'google', 'openrouter', 'ollama'] if p in api_available_providers),
-        'anthropic',
-    )
-    return {
-        'active': 'launch',
-        'targets': targets,
-        'users': users,
-        'credentials': credentials,
-        'profiles': profiles,
-        'preselect_target': target,
-        'provider_models': PROVIDER_MODELS,
-        'api_available_providers': sorted(api_available_providers),
-        'cli_available_providers': sorted(cli_available_providers),
-        'cli_binaries': PROVIDER_CLI_BINARIES,
-        'initial_provider': initial_provider,
-        'error': error,
-    }
-
-
-def _render_run_form_error(request: Request, db: Session, *, error: str):
-    return _render(request, 'run_form.html', _build_run_form_context(request, db, error=error))
+    return _render(request, 'sensors.html', {'active': 'sensors', 'sensors': sensors})
 
 
 @router.get('/runs/new', response_class=HTMLResponse)
 def run_form(request: Request, db: Session = Depends(get_db), target: str | None = None):
     _require(request, 'launch_scan')
-    return _render(request, 'run_form.html', _build_run_form_context(request, db, target=target or ''))
+    return _render(request, 'run_form.html', _run_form_context(db, target=target))
+
+
+@router.post('/runs/models/discover')
+def discover_run_models(
+    request: Request,
+    db: Session = Depends(get_db),
+    provider: str = Form(''),
+    execution_mode: str = Form(''),
+    credential_id: str = Form(''),
+):
+    _require(request, 'launch_scan')
+    result = discover_models_for_selection(
+        db,
+        provider=provider,
+        execution_mode=execution_mode,
+        credential_id=credential_id,
+    )
+    credentials = [
+        _credential_options(db, c)
+        for c in db.query(Credential).order_by(Credential.display_name).all()
+    ]
+    result["credentials"] = credentials
+    return result
 
 
 @router.post('/runs/new')
@@ -856,36 +742,46 @@ def run_create(
     job_family: str = Form(...),
     target_id: str = Form(''),
     user_id: str = Form(...),
-    credential_id: str = Form(...),
+    credential_id: str = Form(''),
     runtime_profile_id: str = Form(...),
     provider: str = Form('openai'),
     model: str = Form('gpt-5.5'),
     execution_mode: str = Form('api'),
 ):
     _require(request, 'launch_scan')
-    # In API mode, the credential's provider must match the run's provider —
-    # otherwise the worker will use the wrong API key and the run will fail.
-    # CLI mode uses local auth (claude/codex/gemini login), so any credential
-    # is acceptable for record-keeping.
-    if execution_mode == 'api':
-        cred = db.query(Credential).filter(Credential.id == UUID(credential_id)).first()
-        if cred is None:
-            return _render_run_form_error(
-                request, db,
-                error='Selected credential not found. Pick a credential from the list and try again.',
-            )
-        if cred.provider != provider and provider != 'ollama':
-            return _render_run_form_error(
-                request, db,
-                error=f"Credential '{cred.display_name}' is for {cred.provider}, but the selected provider is {provider}. "
-                      f"Pick a {provider} credential, switch to CLI execution mode, or change the provider.",
-            )
+    selected = {
+        'job_family': job_family,
+        'target_id': target_id,
+        'user_id': user_id,
+        'credential_id': credential_id,
+        'runtime_profile_id': runtime_profile_id,
+        'provider': provider,
+        'model': model,
+        'execution_mode': execution_mode,
+    }
+    try:
+        user, credential, profile = _validate_run_selection(
+            db,
+            job_family=job_family,
+            user_id=user_id,
+            credential_id=credential_id,
+            runtime_profile_id=runtime_profile_id,
+            provider=provider,
+            model=model,
+            execution_mode=execution_mode,
+        )
+    except ValueError as exc:
+        return _render(
+            request,
+            'run_form.html',
+            _run_form_context(db, target=target_id, selected=selected, error=str(exc)),
+        )
     run = Run(
         job_family=job_family,
         status='queued',
-        user_id=UUID(user_id),
-        credential_id=UUID(credential_id),
-        runtime_profile_id=UUID(runtime_profile_id),
+        user_id=user.id,
+        credential_id=credential.id if credential else None,
+        runtime_profile_id=profile.id,
         target_id=UUID(target_id) if target_id.strip() else None,
         provider=provider,
         model=model,
@@ -965,15 +861,10 @@ def findings_page(request: Request, db: Session = Depends(get_db)):
     severity_counts = {}
     for sev in ['critical', 'high', 'medium', 'low', 'info', 'unknown']:
         severity_counts[sev] = db.query(func.count(Finding.id)).filter(Finding.severity == sev).scalar() or 0
-    sensors = db.query(SensorEndpoint).order_by(SensorEndpoint.hostname.asc()).all()
-    npm_inventory_rows = aggregate_npm_inventory_rows(sensors)
-    npm_environment_count = len({r['sensor_id'] for r in npm_inventory_rows})
     return _render(request, 'findings.html', {'active': 'findings',
         'findings': findings,
         'severity_counts': severity_counts,
         'product_options': sorted(product_options),
-        'npm_inventory_rows': npm_inventory_rows,
-        'npm_environment_count': npm_environment_count,
     })
 
 
@@ -1228,17 +1119,6 @@ def credential_connect_create(
     owner_user_id: str = Form(''),
 ):
     _require(request, 'manage_credentials')
-    owner_uuid = None
-    if owner_user_id.strip():
-        try:
-            owner_uuid = UUID(owner_user_id.strip())
-        except ValueError:
-            return _render(request, 'credential_connect.html', {
-                'active': 'settings',
-                'provider_defaults': PROVIDER_DEFAULT_MODELS,
-                'error': 'Owner User ID must be a valid UUID. Leave blank to create a shared credential, or paste the UUID from Management → Users.',
-                'form': {'display_name': display_name, 'provider': provider, 'owner_user_id': owner_user_id},
-            })
     encrypted = None
     masked = "(no key)"
     clean_key = api_key.strip()
@@ -1247,7 +1127,7 @@ def credential_connect_create(
         masked = mask_api_key(clean_key)
 
     cred = Credential(
-        owner_user_id=owner_uuid,
+        owner_user_id=UUID(owner_user_id) if owner_user_id.strip() else None,
         scope='shared',
         provider=provider,
         display_name=display_name,
@@ -1272,18 +1152,6 @@ def credential_create(
     owner_user_id: str = Form(''),
 ):
     _require(request, 'manage_credentials')
-    owner_uuid = None
-    if owner_user_id.strip():
-        try:
-            owner_uuid = UUID(owner_user_id.strip())
-        except ValueError:
-            return _render(request, 'credential_form.html', {
-                'active': 'settings',
-                'credential': {'display_name': display_name, 'provider': provider, 'scope': scope, 'owner_user_id': owner_user_id},
-                'action': '/credentials/new',
-                'error': 'Owner User ID must be a valid UUID. Leave blank to create a shared credential, or paste the UUID from Management → Users.',
-            })
-
     encrypted = None
     masked = ""
     if api_key.strip():
@@ -1291,7 +1159,7 @@ def credential_create(
         masked = mask_api_key(api_key.strip())
 
     cred = Credential(
-        owner_user_id=owner_uuid,
+        owner_user_id=UUID(owner_user_id) if owner_user_id.strip() else None,
         scope=scope,
         provider=provider,
         display_name=display_name,
@@ -2110,16 +1978,89 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
         }
         for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.created_at.desc()).all()
     ]
+    ai_models = [
+        {
+            'id': str(m.id),
+            'provider': m.provider,
+            'execution_mode': m.execution_mode,
+            'model_id': m.model_id,
+            'source': m.source,
+            'is_enabled': m.is_enabled,
+            'last_discovered_at': m.last_discovered_at.isoformat() if m.last_discovered_at else None,
+        }
+        for m in list_models(db)
+    ]
     return _render(request, 'settings.html', {
         'active': 'settings',
         'targets': targets,
         'credentials': credentials,
         'users': users,
         'profiles': profiles,
+        'ai_models': ai_models,
+        'cli_tools': list_cli_tools(settings=_get_settings()),
+        'ai_providers': [
+            {"value": value, "label": label}
+            for value, label in AI_PROVIDER_LABELS.items()
+        ],
+        'supported_ai_modes': SUPPORTED_AI_MODES,
     })
 
 
 # ── State Machine ──────────────────────────────────────────────────────
+
+@router.post('/settings/models/discover-all')
+def settings_models_discover_all(request: Request, db: Session = Depends(get_db)):
+    _require(request, 'manage_credentials')
+    for credential in db.query(Credential).order_by(Credential.display_name).all():
+        if "api" in SUPPORTED_AI_MODES.get(credential.provider, []):
+            discover_models_for_selection(db, provider=credential.provider, execution_mode="api", credential_id=str(credential.id))
+    for provider, modes in SUPPORTED_AI_MODES.items():
+        if "cli" in modes:
+            discover_models_for_selection(db, provider=provider, execution_mode="cli")
+    return RedirectResponse(url='/settings?tab=models', status_code=303)
+
+
+@router.post('/settings/models/discover-provider')
+def settings_models_discover_provider(
+    request: Request,
+    db: Session = Depends(get_db),
+    provider: str = Form(''),
+    execution_mode: str = Form('api'),
+):
+    _require(request, 'manage_credentials')
+    discover_models_for_selection(db, provider=provider, execution_mode=execution_mode)
+    return RedirectResponse(url='/settings?tab=models', status_code=303)
+
+
+@router.post('/settings/models/{model_id}/enable')
+def settings_model_enable(model_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'manage_credentials')
+    set_model_enabled(db, model_uuid=model_id, enabled=True)
+    db.commit()
+    return RedirectResponse(url='/settings?tab=models', status_code=303)
+
+
+@router.post('/settings/models/{model_id}/disable')
+def settings_model_disable(model_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'manage_credentials')
+    set_model_enabled(db, model_uuid=model_id, enabled=False)
+    db.commit()
+    return RedirectResponse(url='/settings?tab=models', status_code=303)
+
+
+@router.post('/settings/cli-tools/check')
+def settings_cli_tools_check(request: Request):
+    _require(request, 'manage_credentials')
+    list_cli_tools(settings=_get_settings())
+    return RedirectResponse(url='/settings?tab=cli-tools', status_code=303)
+
+
+@router.post('/settings/cli-tools/{tool_name}/update')
+def settings_cli_tool_update(tool_name: str, request: Request, background_tasks: BackgroundTasks):
+    _require(request, 'manage_credentials')
+    background_tasks.add_task(update_cli_tool, tool_name, settings=_get_settings())
+    return RedirectResponse(url='/settings?tab=cli-tools', status_code=303)
+
 
 @router.get('/state-machine', response_class=HTMLResponse)
 def state_machine_page(request: Request):

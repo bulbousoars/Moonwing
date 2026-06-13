@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     claude_cli_binary: str = 'claude'
     codex_cli_binary: str = 'codex'
     gemini_cli_binary: str = 'gemini'
-    workspace_dir: str = '/var/lib/moonwing/workspace/runs'
+    workspace_dir: str = '/mnt/storage/moonwing/workspace/runs'
     session_secret: str = 'moonwing-dev-session-secret-change-me'
     bootstrap_admin_email: str = 'admin'
     bootstrap_admin_password: str = 'admin'
@@ -31,14 +31,3 @@ class Settings(BaseSettings):
     oidc_scope: str = 'openid email profile'
     oidc_default_role: str = 'viewer'
     sensor_enrollment_token: str = ''
-
-    # ── In-app upgrades (admin only) ─────────────────────────────────
-    update_repo_path: str = ''
-    update_git_remote: str = 'origin'
-    update_git_branch: str = 'main'
-    update_venv_python: str = ''
-    update_github_repository: str = ''
-    update_github_branch: str = ''
-    update_systemd_units: str = ''
-    update_pip_timeout_seconds: int = 600
-    update_alembic_timeout_seconds: int = 300

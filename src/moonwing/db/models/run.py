@@ -18,7 +18,7 @@ class Run(Base):
     job_family: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     user_id: Mapped[UUID] = mapped_column(ForeignKey('users.id'), nullable=False, index=True)
-    credential_id: Mapped[UUID] = mapped_column(ForeignKey('credentials.id'), nullable=False, index=True)
+    credential_id: Mapped[UUID | None] = mapped_column(ForeignKey('credentials.id'), nullable=True, index=True)
     runtime_profile_id: Mapped[UUID] = mapped_column(ForeignKey('runtime_profiles.id'), nullable=False, index=True)
     target_id: Mapped[UUID | None] = mapped_column(ForeignKey('targets.id'), nullable=True, index=True)
     provider: Mapped[str] = mapped_column(String(64), nullable=False)

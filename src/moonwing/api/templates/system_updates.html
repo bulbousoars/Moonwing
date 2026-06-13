@@ -12,6 +12,12 @@
   </div>
 </div>
 
+<div class="detail-card" style="max-width:960px;margin-bottom:1.25rem;">
+  <strong>Host AI tools</strong>
+  <p class="form-help" style="margin:0.35rem 0 0.75rem;">See whether Claude, Codex, Gemini, Cursor, or Kimi are installed on the <strong>Docker host</strong> (read-only mount scan).</p>
+  <a href="/system/cli-tools" class="btn">Open host AI tools →</a>
+</div>
+
 {% if update_applied_ok %}
 <div class="probe-result" style="border-color: var(--ok);">
   Upgrade completed successfully. Reload the page if templates look stale — systemd may have restarted services.
@@ -20,6 +26,20 @@
 
 {% if apply_error %}
 <div class="probe-result error">{{ apply_error }}</div>
+{% endif %}
+
+{% if reboot_error %}
+<div class="probe-result error">{{ reboot_error }}</div>
+{% endif %}
+
+{% if reboot_initiated %}
+<div class="probe-result" style="border-color: var(--ok);">
+  Reboot command was dispatched. This UI may stop responding while the host restarts.
+</div>
+{% endif %}
+
+{% if reboot_dispatch_failed %}
+<div class="probe-result error">Reboot could not be started — check server logs and <code>MOONWING_ADMIN_REBOOT_ARGV_JSON</code>.</div>
 {% endif %}
 
 {% if last_apply %}
@@ -60,6 +80,11 @@
     <small>{{ st.github_remote_subject or '' }}</small>
   </div>
   {% endif %}
+  <div class="kpi-cell">
+    <span class="kpi-label">Host AI tools found</span>
+    <strong>{{ host_scan.installed_count }} / {{ host_scan.total_tools }}</strong>
+    <small>Docker host via bind mounts</small>
+  </div>
 </div>
 
 <div class="detail-grid">
@@ -106,6 +131,8 @@
   </div>
 </div>
 
+</div>
+
 {% if update_can_apply %}
 <div class="table-card">
   <div class="table-card-header">
@@ -117,6 +144,23 @@
       <label for="upd-confirm" class="muted" style="display:block;margin-bottom:0.35rem"><strong>Type APPLY to confirm:</strong></label>
       <input id="upd-confirm" type="text" name="confirm" autocomplete="off" spellcheck="false" style="min-width:12rem;margin-right:0.5rem;font-family:inherit" />
       <button type="submit" class="btn btn-primary">Implement update</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if reboot_configured %}
+<div class="table-card">
+  <div class="table-card-header">
+    <h2>Host reboot</h2>
+    <span class="text-muted">Runs the configured argv on <strong>this host</strong> as the Moonwing API process user. Empty/disabled in most Docker-only installs.</span>
+  </div>
+  <div style="padding:1rem 1.25rem">
+    <p class="text-muted" style="margin-top:0">Command: <code>{{ reboot_argv_preview }}</code></p>
+    <form method="post" action="/system/updates/reboot" onsubmit="return confirm('Reboot THIS host now? You will lose the connection to Moonwing.');">
+      <label for="reboot-confirm" class="muted" style="display:block;margin-bottom:0.35rem"><strong>Type REBOOT to confirm:</strong></label>
+      <input id="reboot-confirm" type="text" name="confirm" autocomplete="off" spellcheck="false" style="min-width:12rem;margin-right:0.5rem;font-family:inherit" />
+      <button type="submit" class="btn">Reboot host</button>
     </form>
   </div>
 </div>

@@ -1,0 +1,77 @@
+{# Requires cli_tool_report from discover_ai_cli_tools(...) #}
+<details class="detail-card" style="max-width:760px; margin-bottom:16px;">
+  <summary style="cursor:pointer;font-weight:600;">Local AI CLI detection ({{ cli_tool_report.process_label }})</summary>
+  <p style="margin:10px 0; font-size:0.9rem; color:var(--text-muted);">{{ cli_tool_report.note }}</p>
+  <p style="margin:0 0 10px 0; font-size:0.85rem; color:var(--text-muted);">
+    On startup, API and worker also <strong>execute</strong> each found binary with <code>--version</code>, then <code>-V</code>, then <code>--help</code> (short timeout, no TTY) and log the outcome — disable with <code>MOONWING_CLI_BOOT_SMOKE=false</code> if you need faster boot.
+  </p>
+  <p style="margin:0 0 12px 0; font-size:0.85rem; color:var(--text-muted); border-left:3px solid var(--accent); padding-left:10px;">
+    <strong>Installing CLIs:</strong> Moonwing does not run package managers for you. Use <strong>Copy command</strong> below on the
+    <strong>Docker host</strong> (SSH), not inside the API container unless you intentionally install there. For Compose, bind-mount binaries into
+    <code>moonwing-worker</code> or use <strong>API</strong> execution mode with stored API keys.
+  </p>
+  <table class="data-table cli-tools-table" style="width:100%; font-size:0.9rem;">
+    <thead>
+      <tr>
+        <th>Tool</th>
+        <th>Configured</th>
+        <th>Resolved path</th>
+        <th>Status</th>
+        <th>Install help</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in cli_tool_report.tools %}
+      <tr>
+        <td>
+          <strong>{{ t.display_name }}</strong><br>
+          <span style="color:var(--text-muted); font-size:0.85rem;">{{ t.env_var }}</span><br>
+          <span style="color:var(--text-muted); font-size:0.85rem;">Providers: {{ t.providers | join(', ') }}</span>
+        </td>
+        <td><code>{{ t.configured_value }}</code></td>
+        <td>{% if t.resolved_path %}<code style="word-break:break-all;">{{ t.resolved_path }}</code>{% else %}—{% endif %}</td>
+        <td>{% if t.available %}<span class="cli-probe-ok">Found</span>{% else %}<span class="cli-probe-miss">Not found</span>{% endif %}</td>
+        <td class="cli-install-cell">
+          {% if t.install_docs_url %}
+          <a href="{{ t.install_docs_url }}" target="_blank" rel="noopener noreferrer" class="cli-install-docs">Vendor docs</a>
+          {% endif %}
+          {% for c in t.install_commands %}
+          <div class="cli-install-row">
+            <span class="cli-install-label">{{ c.label }}</span>
+            <code class="cli-install-snippet">{{ c.command }}</code>
+            <button type="button" class="btn btn-secondary btn-sm cli-copy-btn" data-copy-cmd="{{ c.command | e }}">Copy</button>
+          </div>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin:10px 0 0 0; font-size:0.85rem; color:var(--text-muted);">
+    Machine-readable (signed-in): <code>GET /api/runs/cli-tools</code> — same environment as this page unless you split API and worker.
+  </p>
+</details>
+<script>
+(function () {
+  document.querySelectorAll('.cli-copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var cmd = btn.getAttribute('data-copy-cmd');
+      if (!cmd) return;
+      function done(ok) {
+        var prev = btn.textContent;
+        btn.textContent = ok ? 'Copied' : 'Copy failed';
+        btn.disabled = true;
+        setTimeout(function () {
+          btn.textContent = prev;
+          btn.disabled = false;
+        }, 1600);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cmd).then(function () { done(true); }).catch(function () { done(false); });
+      } else {
+        done(false);
+      }
+    });
+  });
+})();
+</script>

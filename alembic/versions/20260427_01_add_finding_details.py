@@ -17,21 +17,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    is_pg = bind.dialect.name == "postgresql"
-    json_type = postgresql.JSONB(astext_type=sa.Text()) if is_pg else sa.JSON()
-    json_default = sa.text("'{}'::jsonb") if is_pg else sa.text("'{}'")
     op.add_column(
         "findings",
         sa.Column(
             "details",
-            json_type,
+            postgresql.JSONB(astext_type=sa.Text()),
             nullable=False,
-            server_default=json_default,
+            server_default=sa.text("'{}'::jsonb"),
         ),
     )
-    if is_pg:
-        op.alter_column("findings", "details", server_default=None)
+    op.alter_column("findings", "details", server_default=None)
 
 
 def downgrade() -> None:

@@ -6,6 +6,7 @@ paths configured via Settings. Intended for admins on the manager host.
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import subprocess
@@ -392,3 +393,37 @@ def shutil_which_systemctl() -> str | None:
     from shutil import which
 
     return which('systemctl')
+
+
+def parse_admin_reboot_argv(settings: object) -> list[str] | None:
+    """Parse ``MOONWING_ADMIN_REBOOT_ARGV_JSON`` as a non-empty JSON array of non-empty strings."""
+    raw = (getattr(settings, "admin_reboot_argv_json", None) or "").strip()
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+    argv: list[str] = []
+    for x in data:
+        if not isinstance(x, str) or not x.strip():
+            return None
+        argv.append(x.strip())
+    return argv
+
+
+def spawn_admin_host_reboot(argv: list[str]) -> tuple[bool, str]:
+    """Start host reboot without waiting for completion (may disconnect this UI)."""
+    try:
+        subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return False, str(exc)[:500]
+    return True, f"Reboot dispatched ({argv[0]!r})."

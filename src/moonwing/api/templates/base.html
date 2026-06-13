@@ -16,7 +16,7 @@
   })();
   </script>
   <link rel="icon" type="image/png" href="/static/img/favicon.png">
-  <link rel="stylesheet" href="/static/css/style.css?v=20260504-run-failure-reason">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260607-model-registry-discovery">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;550;600;650;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
@@ -72,9 +72,9 @@
           </a>
         </li>
         <li>
-          <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="3"/><path d="M10 2v2m0 12v2m-5.66-2.34l1.42-1.42m8.48-8.48l1.42-1.42M2 10h2m12 0h2M4.34 4.34l1.42 1.42m8.48 8.48l1.42 1.42"/></svg>
-            Runtime Settings
+          <a href="/sensors" class="{% if active == 'sensors' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="14" height="10" rx="2"/><path d="M7 17h6M10 14v3"/><circle cx="7" cy="9" r="1"/><path d="M10 8h4M10 11h3"/></svg>
+            Sensors
           </a>
         </li>
       </ul>
@@ -90,15 +90,9 @@
           </a>
         </li>
         <li>
-          <a href="/sensors" class="{% if active == 'sensors' %}active{% endif %}">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="14" height="10" rx="2"/><path d="M7 17h6M10 14v3"/><circle cx="7" cy="9" r="1"/><path d="M10 8h4M10 11h3"/></svg>
-            Sensors
-          </a>
-        </li>
-        <li>
-          <a href="/system/updates" class="{% if active == 'system_updates' %}active{% endif %}">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3v3M10 14v3M3 10h3M14 10h3"/><path d="M5.6 5.6l2.1 2.1M12.3 12.3l2.1 2.1M5.6 14.4l2.1-2.1M12.3 7.7l2.1-2.1"/></svg>
-            Updates
+          <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="3"/><path d="M10 2v2m0 12v2m-5.66-2.34l1.42-1.42m8.48-8.48l1.42-1.42M2 10h2m12 0h2M4.34 4.34l1.42 1.42m8.48 8.48l1.42 1.42"/></svg>
+            Settings
           </a>
         </li>
         <li>
