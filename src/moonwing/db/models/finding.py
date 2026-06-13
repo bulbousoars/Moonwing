@@ -22,6 +22,12 @@ class Finding(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open", server_default="open")
     evidence_refs: Mapped[list] = mapped_column(JSON_LIST_VARIANT, default=list, nullable=False)
     details: Mapped[dict] = mapped_column(JSON_DICT_VARIANT, default=dict, nullable=False)
+    evidence_level: Mapped[str] = mapped_column(
+        String(48), nullable=False, default="suspicion", server_default="suspicion"
+    )
+    evidence_history: Mapped[list] = mapped_column(JSON_LIST_VARIANT, default=list, nullable=False)
+    last_transition_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_transition_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     remediated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     remediated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

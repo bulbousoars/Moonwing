@@ -126,6 +126,71 @@ def _get_prompt(job_family: str, source_ref: str, *, nmap_output: str = "") -> s
     return _SOURCE_HUNT_PROMPT.format(source_ref=source_ref)
 
 
+def build_ai_cli_command(
+    *,
+    provider: str,
+    model: str,
+    prompt: str,
+    source_tools: bool = False,
+) -> list[str]:
+    """Build a provider CLI command for an already-rendered prompt."""
+    settings = Settings()
+    if provider == "anthropic":
+        cmd = [
+            settings.claude_cli_binary,
+            "--print",
+            "--output-format",
+            "json",
+            "--model",
+            model,
+            "--max-turns",
+            "10" if source_tools else "1",
+            "-p",
+            prompt,
+        ]
+        if source_tools:
+            cmd.extend(["--allowedTools", "Bash,Read,Glob,Grep"])
+        return cmd
+    if provider in ("openai", "openrouter"):
+        return [
+            settings.codex_cli_binary,
+            "exec",
+            "--json",
+            "-m",
+            model,
+            "--full-auto",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            prompt,
+        ]
+    if provider == "google":
+        return [
+            settings.gemini_cli_binary,
+            "-p",
+            prompt,
+            "-o",
+            "json",
+            "-m",
+            model,
+            "--yolo",
+        ]
+    if provider == "ollama":
+        return [
+            settings.codex_cli_binary,
+            "exec",
+            "--json",
+            "-m",
+            model,
+            "--local-provider",
+            "ollama",
+            "--full-auto",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            prompt,
+        ]
+    raise ClearwingCommandError(f"unsupported provider for CLI execution: {provider!r}")
+
+
 def run_nmap(target: str, *, ports: str | None = None, timeout: int = 300) -> str:
     """Run nmap against a target and return the raw text output.
 
@@ -200,58 +265,9 @@ def build_clearwing_command(
         _get_prompt(job_family, source_ref, nmap_output=nmap_output),
         ai_instruction or None,
     )
-    settings = Settings()
-
-    if provider == "anthropic":
-        binary = settings.claude_cli_binary
-        # Network scans: analysis only (nmap already ran), 1 turn
-        # Source hunts: needs tools to read code, more turns
-        max_turns = "1" if family == JobFamily.NETWORK_SCAN else "10"
-        cmd = [
-            binary,
-            "--print",       # non-interactive, print output to stdout
-            "--output-format", "json",
-            "--model", model,
-            "--max-turns", max_turns,
-            "-p", prompt,
-        ]
-        if family == JobFamily.SOURCE_HUNT:
-            cmd.extend(["--allowedTools", "Bash,Read,Glob,Grep"])
-        return cmd
-    elif provider in ("openai", "openrouter"):
-        binary = settings.codex_cli_binary
-        return [
-            binary,
-            "exec",           # non-interactive subcommand
-            "--json",         # JSONL output to stdout
-            "-m", model,
-            "--full-auto",
-            "--skip-git-repo-check",
-            "--ephemeral",
-            prompt,
-        ]
-    elif provider == "google":
-        binary = settings.gemini_cli_binary
-        return [
-            binary,
-            "-p", prompt,       # non-interactive headless mode
-            "-o", "json",       # JSON output
-            "-m", model,
-            "--yolo",           # auto-approve all actions
-        ]
-    elif provider == "ollama":
-        # For ollama, use codex CLI pointed at local endpoint
-        binary = settings.codex_cli_binary
-        return [
-            binary,
-            "exec",
-            "--json",
-            "-m", model,
-            "--local-provider", "ollama",
-            "--full-auto",
-            "--skip-git-repo-check",
-            "--ephemeral",
-            prompt,
-        ]
-    else:
-        raise ClearwingCommandError(f"unsupported provider for CLI execution: {provider!r}")
+    return build_ai_cli_command(
+        provider=provider,
+        model=model,
+        prompt=prompt,
+        source_tools=family == JobFamily.SOURCE_HUNT,
+    )

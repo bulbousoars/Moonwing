@@ -559,8 +559,74 @@ class TestProcessRunIntegration:
                 object_store=object_store,
             )
 
+    def test_process_run_routes_agentic_source_hunt_cli_to_staged_pipeline(
+        self, monkeypatch, session, object_store, seed_user, seed_credential,
+    ):
+        profile = RuntimeProfileRecord(
+            id=uuid4(),
+            name="agentic-source-cli",
+            allow_exploits=False,
+            settings={"agentic_mode": True, "agentic": {"top_n": 2}},
+        )
+        target = Target(
+            id=uuid4(),
+            target_type="repo",
+            display_name="https://github.com/OWASP/NodeGoat.git",
+            source_metadata={"url": "https://github.com/OWASP/NodeGoat.git"},
+        )
+        session.add_all([profile, target])
+        session.commit()
+        run = _make_queued_run(
+            session,
+            user=seed_user,
+            credential=seed_credential,
+            profile=profile,
+            target=target,
+            job_family="source_hunt",
+            provider="openai",
+            model="gpt-x",
+            execution_mode="cli",
+        )
+        calls = []
+
+        def fake_cli_pipeline(**kwargs):
+            calls.append(kwargs)
+            return type(
+                "Result",
+                (),
+                {
+                    "raw_payload": {
+                        "findings": [
+                            {
+                                "title": "pipeline finding",
+                                "severity": "high",
+                                "evidence": ["auth.py:1"],
+                            }
+                        ]
+                    },
+                    "usage": {"ranked_count": 1, "hunter_iterations": 1},
+                },
+            )()
+
+        monkeypatch.setattr(
+            "moonwing.worker.tasks.execute_source_hunt_cli_pipeline",
+            fake_cli_pipeline,
+        )
+        monkeypatch.setattr(
+            "moonwing.worker.tasks.execute_clearwing",
+            lambda **kwargs: (_ for _ in ()).throw(AssertionError("legacy CLI should not run")),
+        )
+
+        process_run(session=session, run_id=run.id, object_store=object_store)
+
+        assert len(calls) == 1
+        assert calls[0]["source_ref"] == "https://github.com/OWASP/NodeGoat.git"
+        assert calls[0]["input_kind"] == "repo"
+        findings = session.query(Finding).filter(Finding.run_id == run.id).all()
+        assert [f.title for f in findings] == ["pipeline finding"]
+
         session.expire(run)
-        assert run.status == "failed"
+        assert run.status == "completed"
 
 
 # ---------------------------------------------------------------------------

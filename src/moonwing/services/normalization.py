@@ -16,6 +16,9 @@ DETAIL_FIELDS = (
     "remediation",
     "confidence",
     "references",
+    "source_file",
+    "concern",
+    "repo_ref",
 )
 
 

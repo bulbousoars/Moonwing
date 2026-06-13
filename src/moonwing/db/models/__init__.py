@@ -5,6 +5,7 @@ from .target import Target
 from .artifact import Artifact
 from .audit_event import AuditEvent
 from .finding import Finding
+from .kg import KGEdge, KGNode
 from .ldap_config import LdapConfig
 from .notification_preference import NotificationPreference
 from .privileged_access_grant import PrivilegedAccessGrant
@@ -21,6 +22,8 @@ __all__ = [
     'AuditEvent',
     'Credential',
     'Finding',
+    'KGEdge',
+    'KGNode',
     'LdapConfig',
     'NotificationPreference',
     'PrivilegedAccessGrant',

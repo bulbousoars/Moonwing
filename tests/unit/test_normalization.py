@@ -21,6 +21,25 @@ def test_normalize_findings_extracts_title_severity_and_evidence_refs():
     assert findings[0]["evidence_refs"] == ["artifact://log-1"]
 
 
+def test_normalize_findings_preserves_source_hunt_trace_fields():
+    raw = {
+        "findings": [
+            {
+                "title": "Hardcoded admin literal",
+                "severity": "high",
+                "evidence": ["auth.py:1"],
+                "source_file": "auth.py",
+                "concern": "auth",
+            }
+        ]
+    }
+
+    findings = normalize_findings(raw)
+
+    assert findings[0]["details"]["source_file"] == "auth.py"
+    assert findings[0]["details"]["concern"] == "auth"
+
+
 def test_normalize_findings_rejects_missing_title():
     with pytest.raises(NormalizationError):
         normalize_findings({"findings": [{"severity": "high", "evidence": []}]})

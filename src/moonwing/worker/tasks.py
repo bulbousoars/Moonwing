@@ -13,7 +13,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from moonwing.db.models import Artifact, Finding, Run
+from moonwing.db.models import Artifact, Finding, Run, Target
+from moonwing.services.kg import record_finding_provenance
 from moonwing.services.normalization import normalize_findings
 from moonwing.services.run_activity import append_run_activity, record_run_failure
 from moonwing.services.runs import transition_run_status
@@ -21,6 +22,9 @@ from moonwing.services.crypto import CryptoError, decrypt_api_key, provider_env_
 from moonwing.worker.api_executor import APIExecutionError, execute_via_api
 from moonwing.worker.clearwing_runner import build_clearwing_command, run_nmap
 from moonwing.worker.executor import ExecutionError, execute_clearwing
+from moonwing.worker.react_executor import execute_network_react
+from moonwing.worker.source_hunt_cli_executor import execute_source_hunt_cli_pipeline
+from moonwing.worker.source_hunt_executor import execute_source_hunt_pipeline
 from moonwing.worker.staging import StagedJob, StagingError, stage_run
 
 logger = logging.getLogger("moonwing.worker.tasks")
@@ -35,6 +39,115 @@ def _snapshot_ai_instruction(snapshot: dict | None) -> str | None:
         return None
     text = str(raw).strip()
     return text or None
+
+
+def _short_args(args: dict | None, limit: int = 120) -> str:
+    """Compact one-line preview of tool arguments for activity log lines."""
+    if not args:
+        return ""
+    try:
+        text = json.dumps(args, separators=(",", ":"), default=str)
+    except (TypeError, ValueError):
+        text = str(args)
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _runtime_profile_settings(snapshot: dict | None) -> dict:
+    """Pull runtime-profile settings out of the staging snapshot, if present."""
+    if not snapshot:
+        return {}
+    profile = snapshot.get("runtime_profile") or {}
+    settings = profile.get("settings") or {}
+    return settings if isinstance(settings, dict) else {}
+
+
+def _is_agentic_network_run(job_family: str, profile_settings: dict) -> bool:
+    return (
+        job_family == "network_scan"
+        and bool(profile_settings.get("agentic_mode"))
+    )
+
+
+def _is_agentic_source_hunt_run(job_family: str, profile_settings: dict) -> bool:
+    return (
+        job_family == "source_hunt"
+        and bool(profile_settings.get("agentic_mode"))
+    )
+
+
+def _target_address(session: Session, run: Run) -> str | None:
+    """Pull the network address from a run's target, if available."""
+    if run.target_id is None:
+        return None
+    target = session.get(Target, run.target_id)
+    if target is None:
+        return None
+    meta = target.source_metadata or {}
+    addr = meta.get("address") or meta.get("host") or meta.get("ip")
+    if isinstance(addr, str) and addr.strip():
+        return addr.strip()
+    return None
+
+
+def _target_source_ref(session: Session, run: Run) -> str | None:
+    if run.target_id is None:
+        return None
+    target = session.get(Target, run.target_id)
+    if target is None:
+        return None
+    meta = target.source_metadata or {}
+    ref = meta.get("url") or meta.get("path") or meta.get("address") or target.display_name
+    if isinstance(ref, str) and ref.strip():
+        return ref.strip()
+    return None
+
+
+def _persist_finding_with_kg(
+    session: Session,
+    *,
+    run: Run,
+    item: dict,
+    target_address: str | None,
+    target_source_ref: str | None = None,
+) -> Finding:
+    """Insert one Finding row and mirror it into the knowledge graph.
+
+    KG hooks are wrapped in a try/except so a graph-side problem never
+    fails the run — findings are the system of record, KG is derived.
+    """
+    finding = Finding(
+        run_id=run.id,
+        title=item["title"],
+        severity=item["severity"],
+        evidence_refs=item["evidence_refs"],
+        details=item.get("details", {}),
+    )
+    session.add(finding)
+    session.flush()  # populate finding.id for KG provenance
+
+    details = item.get("details", {}) or {}
+    affected_hosts = details.get("affected_hosts") or []
+    refs = details.get("references") or []
+    cve_refs = [r for r in refs if isinstance(r, str) and r.upper().startswith("CVE-")]
+    source_file = details.get("source_file")
+    repo_ref = details.get("repo_ref") or target_source_ref
+
+    try:
+        record_finding_provenance(
+            session,
+            finding_id=finding.id,
+            title=finding.title,
+            severity=finding.severity,
+            run_id=run.id,
+            target_address=target_address,
+            affected_hosts=affected_hosts if isinstance(affected_hosts, list) else None,
+            cve_refs=cve_refs,
+            repo_ref=repo_ref if isinstance(repo_ref, str) else None,
+            source_file=source_file if isinstance(source_file, str) else None,
+        )
+    except Exception:
+        logger.exception("kg record_finding_provenance failed for finding %s", finding.id)
+    return finding
 
 
 @dataclass(frozen=True)
@@ -181,6 +294,9 @@ def process_run(
                     raise
 
             execution_mode = run.execution_mode or "api"
+            profile_settings = _runtime_profile_settings(
+                staged_job.execution_snapshot
+            )
 
             # Create per-run workspace directory
             from moonwing.config import Settings
@@ -224,37 +340,211 @@ def process_run(
                         raise ValueError(
                             f"run {run_id} uses API execution mode but credential has no API key"
                         )
-                    logger.info("run %s executing via API: provider=%s model=%s", run_id, run.provider, run.model)
-                    append_run_activity(
-                        run,
-                        stage="running",
-                        message=f"Calling {run.provider} API with model {run.model}",
-                    )
-                    session.commit()
-                    api_result = execute_via_api(
-                        provider=run.provider,
-                        model=run.model,
-                        api_key=api_key or "",
-                        job_family=run.job_family,
-                        source_ref=staged_job.target_metadata.get("address")
+
+                    if _is_agentic_source_hunt_run(run.job_family, profile_settings):
+                        source_ref = (
+                            staged_job.target_metadata.get("url")
+                            or staged_job.target_metadata.get("path")
+                            or staged_job.target_metadata.get("address")
+                            or staged_job.target_display_name
+                            or ""
+                        )
+                        input_kind = (
+                            staged_job.target_metadata.get("input_kind")
+                            or ("path" if staged_job.target_metadata.get("path") else "repo")
+                        )
+                        logger.info(
+                            "run %s executing via source-hunt pipeline: provider=%s model=%s ref=%s",
+                            run_id, run.provider, run.model, source_ref,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=(
+                                f"Starting agentic source hunt on {source_ref} "
+                                f"with {run.provider}:{run.model}"
+                            ),
+                        )
+                        session.commit()
+
+                        def _on_stage(kind, payload):
+                            if kind == "stage_start":
+                                append_run_activity(
+                                    run, stage="running",
+                                    message=f"stage {payload['name']} starting",
+                                )
+                            elif kind == "stage_end":
+                                append_run_activity(
+                                    run, stage="running",
+                                    message=(
+                                        f"stage {payload['name']} "
+                                        f"-> {payload['outcome']}"
+                                        + (f" ({payload['error']})" if payload.get("error") else "")
+                                    ),
+                                )
+
+                        def _on_hunter(kind, payload):
+                            if kind == "file_start":
+                                append_run_activity(
+                                    run, stage="running",
+                                    message=f"hunter starting {payload['path']} [{payload.get('concern')}]",
+                                )
+                            elif kind == "file_end":
+                                outcome = "ok" if payload.get("ok") else f"err: {payload.get('error')}"
+                                append_run_activity(
+                                    run, stage="running",
+                                    message=(
+                                        f"hunter {payload['path']} -> {outcome}, "
+                                        f"{payload.get('findings', 0)} findings, "
+                                        f"{payload.get('iterations', 0)} iters"
+                                    ),
+                                )
+
+                        def _on_hunter_note(note: str):
+                            append_run_activity(
+                                run, stage="running", message=f"note: {note[:200]}"
+                            )
+
+                        sh_result = execute_source_hunt_pipeline(
+                            session=session,
+                            run=run,
+                            workdir=str(run_workdir),
+                            source_ref=source_ref,
+                            input_kind=input_kind,
+                            api_key=api_key or "",
+                            profile_settings=profile_settings,
+                            on_stage_event=_on_stage,
+                            on_hunter_event=_on_hunter,
+                            on_hunter_note=_on_hunter_note,
+                            ai_instruction=_snapshot_ai_instruction(
+                                staged_job.execution_snapshot
+                            ),
+                            timeout_seconds=execution_timeout,
+                        )
+                        raw_payload = sh_result.raw_payload
+                        logger.info(
+                            "run %s source-hunt finished — %d findings, usage=%s",
+                            run_id,
+                            len(raw_payload.get("findings", [])),
+                            sh_result.usage,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=(
+                                f"Source hunt finished: "
+                                f"{len(raw_payload.get('findings', []))} finding(s), "
+                                f"{sh_result.usage.get('ranked_count', 0)} files ranked, "
+                                f"{sh_result.usage.get('hunter_iterations', 0)} hunter iterations"
+                            ),
+                        )
+                    elif _is_agentic_network_run(run.job_family, profile_settings):
+                        target_address = (
+                            staged_job.target_metadata.get("address")
                             or staged_job.target_metadata.get("url")
                             or staged_job.target_display_name
-                            or "",
-                        timeout=execution_timeout,
-                        ai_instruction=_snapshot_ai_instruction(staged_job.execution_snapshot),
-                    )
-                    raw_payload = api_result.raw_payload
-                    logger.info(
-                        "run %s API call finished — %d findings, usage=%s",
-                        run_id,
-                        len(raw_payload.get("findings", [])),
-                        api_result.usage,
-                    )
-                    append_run_activity(
-                        run,
-                        stage="running",
-                        message=f"API execution finished with {len(raw_payload.get('findings', []))} finding(s)",
-                    )
+                            or ""
+                        )
+                        logger.info(
+                            "run %s executing via ReAct agent: provider=%s model=%s target=%s",
+                            run_id, run.provider, run.model, target_address,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=(
+                                f"Starting agentic scan of {target_address} "
+                                f"with {run.provider}:{run.model}"
+                            ),
+                        )
+                        session.commit()
+
+                        def _on_step(step):
+                            append_run_activity(
+                                run,
+                                stage="running",
+                                message=(
+                                    f"iter {step.iteration}: "
+                                    f"{(step.assistant_text or '').strip()[:200] or '(tool round)'}"
+                                ),
+                            )
+
+                        def _on_tool(step, inv):
+                            outcome = "ok" if inv.result.ok else f"error: {inv.result.error}"
+                            append_run_activity(
+                                run,
+                                stage="running",
+                                message=f"tool {inv.call.name}({_short_args(inv.call.arguments)}) → {outcome[:160]}",
+                            )
+
+                        def _on_note(note: str):
+                            append_run_activity(
+                                run, stage="running", message=f"note: {note[:200]}"
+                            )
+
+                        react_result = execute_network_react(
+                            session=session,
+                            run=run,
+                            target_address=target_address,
+                            api_key=api_key or "",
+                            profile_settings=profile_settings,
+                            on_step=_on_step,
+                            on_tool_invocation=_on_tool,
+                            on_note=_on_note,
+                            ai_instruction=_snapshot_ai_instruction(
+                                staged_job.execution_snapshot
+                            ),
+                            timeout_seconds=execution_timeout,
+                        )
+                        raw_payload = react_result.raw_payload
+                        logger.info(
+                            "run %s ReAct finished — %d findings, usage=%s",
+                            run_id,
+                            len(raw_payload.get("findings", [])),
+                            react_result.usage,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=(
+                                f"Agentic scan finished: "
+                                f"{len(raw_payload.get('findings', []))} finding(s), "
+                                f"{react_result.usage.get('iterations')} iterations, "
+                                f"stop={react_result.usage.get('stop_reason')}"
+                            ),
+                        )
+                    else:
+                        logger.info("run %s executing via API: provider=%s model=%s", run_id, run.provider, run.model)
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=f"Calling {run.provider} API with model {run.model}",
+                        )
+                        session.commit()
+                        api_result = execute_via_api(
+                            provider=run.provider,
+                            model=run.model,
+                            api_key=api_key or "",
+                            job_family=run.job_family,
+                            source_ref=staged_job.target_metadata.get("address")
+                                or staged_job.target_metadata.get("url")
+                                or staged_job.target_display_name
+                                or "",
+                            timeout=execution_timeout,
+                            ai_instruction=_snapshot_ai_instruction(staged_job.execution_snapshot),
+                        )
+                        raw_payload = api_result.raw_payload
+                        logger.info(
+                            "run %s API call finished — %d findings, usage=%s",
+                            run_id,
+                            len(raw_payload.get("findings", [])),
+                            api_result.usage,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=f"API execution finished with {len(raw_payload.get('findings', []))} finding(s)",
+                        )
                 else:
                     # CLI execution mode — invoke claude/codex binary
                     # CLI tools authenticate via their own stored credentials
@@ -265,58 +555,154 @@ def process_run(
                         if env_var_name:
                             run_env[env_var_name] = api_key
 
-                    # For network scans: run nmap first, then feed output to AI for analysis
-                    command = list(staged_job.command)
-                    if run.job_family == "network_scan":
+                    if _is_agentic_source_hunt_run(run.job_family, profile_settings):
                         source_ref = (
-                            staged_job.target_metadata.get("address")
+                            staged_job.target_metadata.get("url")
+                            or staged_job.target_metadata.get("path")
+                            or staged_job.target_metadata.get("address")
                             or staged_job.target_display_name
                             or ""
                         )
-                        scan_ports = staged_job.target_metadata.get("scan_ports") or staged_job.target_metadata.get("port_range")
-                        logger.info("run %s running nmap against %s", run_id, source_ref)
-                        port_message = f" on port(s) {scan_ports}" if scan_ports else ""
-                        append_run_activity(run, stage="running", message=f"Running nmap against {source_ref}{port_message}")
-                        session.commit()
-                        nmap_output = run_nmap(source_ref, ports=scan_ports)
-
-                        # Save nmap output to workspace
-                        nmap_file = run_workdir / "nmap-output.txt"
-                        nmap_file.write_text(nmap_output)
-
-                        # Rebuild command with nmap output in prompt
-                        command = build_clearwing_command(
-                            job_family=run.job_family,
-                            input_kind="repo",
-                            source_ref=source_ref,
-                            provider=run.provider,
-                            model=run.model,
-                            nmap_output=nmap_output,
-                            ai_instruction=_snapshot_ai_instruction(staged_job.execution_snapshot),
+                        input_kind = (
+                            staged_job.target_metadata.get("input_kind")
+                            or ("path" if staged_job.target_metadata.get("path") else "repo")
                         )
+                        logger.info(
+                            "run %s executing via CLI source-hunt pipeline: provider=%s model=%s ref=%s",
+                            run_id,
+                            run.provider,
+                            run.model,
+                            source_ref,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=(
+                                f"Starting CLI agentic source hunt on {source_ref} "
+                                f"with {run.provider}:{run.model}"
+                            ),
+                        )
+                        session.commit()
 
-                    logger.info("run %s executing via CLI: %s", run_id, " ".join(command[:5]) + "...")
-                    append_run_activity(run, stage="running", message=f"Executing CLI scanner via {command[0]}")
-                    session.commit()
-                    result = execute_clearwing(
-                        command=command,
-                        env=run_env or None,
-                        timeout=execution_timeout,
-                        cwd=str(run_workdir),
-                    )
-                    raw_payload = result.raw_payload
-                    logger.info(
-                        "run %s CLI finished — %d findings in payload",
-                        run_id,
-                        len(raw_payload.get("findings", [])),
-                    )
-                    append_run_activity(
-                        run,
-                        stage="running",
-                        message=f"CLI execution finished with {len(raw_payload.get('findings', []))} finding(s)",
-                    )
+                        def _on_cli_stage(kind, payload):
+                            if kind == "stage_start":
+                                append_run_activity(
+                                    run,
+                                    stage="running",
+                                    message=f"stage {payload['name']} starting",
+                                )
+                            elif kind == "stage_end":
+                                append_run_activity(
+                                    run,
+                                    stage="running",
+                                    message=(
+                                        f"stage {payload['name']} "
+                                        f"-> {payload['outcome']}"
+                                        + (f" ({payload['error']})" if payload.get("error") else "")
+                                    ),
+                                )
+
+                        def _on_cli_hunter(kind, payload):
+                            if kind == "file_start":
+                                append_run_activity(
+                                    run,
+                                    stage="running",
+                                    message=f"hunter starting {payload['path']} [{payload.get('concern')}]",
+                                )
+                            elif kind == "file_end":
+                                outcome = "ok" if payload.get("ok") else f"err: {payload.get('error')}"
+                                append_run_activity(
+                                    run,
+                                    stage="running",
+                                    message=(
+                                        f"hunter {payload['path']} -> {outcome}, "
+                                        f"{payload.get('findings', 0)} findings, "
+                                        f"{payload.get('iterations', 0)} iters"
+                                    ),
+                                )
+
+                        sh_result = execute_source_hunt_cli_pipeline(
+                            session=session,
+                            run=run,
+                            workdir=str(run_workdir),
+                            source_ref=source_ref,
+                            input_kind=input_kind,
+                            profile_settings=profile_settings,
+                            on_stage_event=_on_cli_stage,
+                            on_hunter_event=_on_cli_hunter,
+                            ai_instruction=_snapshot_ai_instruction(staged_job.execution_snapshot),
+                            timeout_seconds=execution_timeout,
+                            env=run_env or None,
+                        )
+                        raw_payload = sh_result.raw_payload
+                        logger.info(
+                            "run %s CLI source-hunt finished - %d findings, usage=%s",
+                            run_id,
+                            len(raw_payload.get("findings", [])),
+                            sh_result.usage,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=(
+                                f"CLI source hunt finished: "
+                                f"{len(raw_payload.get('findings', []))} finding(s), "
+                                f"{sh_result.usage.get('ranked_count', 0)} files ranked, "
+                                f"{sh_result.usage.get('hunter_iterations', 0)} hunter iterations"
+                            ),
+                        )
+                    else:
+                        # For network scans: run nmap first, then feed output to AI for analysis
+                        command = list(staged_job.command)
+                        if run.job_family == "network_scan":
+                            source_ref = (
+                                staged_job.target_metadata.get("address")
+                                or staged_job.target_display_name
+                                or ""
+                            )
+                            scan_ports = staged_job.target_metadata.get("scan_ports") or staged_job.target_metadata.get("port_range")
+                            logger.info("run %s running nmap against %s", run_id, source_ref)
+                            port_message = f" on port(s) {scan_ports}" if scan_ports else ""
+                            append_run_activity(run, stage="running", message=f"Running nmap against {source_ref}{port_message}")
+                            session.commit()
+                            nmap_output = run_nmap(source_ref, ports=scan_ports)
+
+                            # Save nmap output to workspace
+                            nmap_file = run_workdir / "nmap-output.txt"
+                            nmap_file.write_text(nmap_output)
+
+                            # Rebuild command with nmap output in prompt
+                            command = build_clearwing_command(
+                                job_family=run.job_family,
+                                input_kind="repo",
+                                source_ref=source_ref,
+                                provider=run.provider,
+                                model=run.model,
+                                nmap_output=nmap_output,
+                                ai_instruction=_snapshot_ai_instruction(staged_job.execution_snapshot),
+                            )
+
+                        logger.info("run %s executing via CLI: %s", run_id, " ".join(command[:5]) + "...")
+                        append_run_activity(run, stage="running", message=f"Executing CLI scanner via {command[0]}")
+                        session.commit()
+                        result = execute_clearwing(
+                            command=command,
+                            env=run_env or None,
+                            timeout=execution_timeout,
+                            cwd=str(run_workdir),
+                        )
+                        raw_payload = result.raw_payload
+                        logger.info(
+                            "run %s CLI finished - %d findings in payload",
+                            run_id,
+                            len(raw_payload.get("findings", [])),
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=f"CLI execution finished with {len(raw_payload.get('findings', []))} finding(s)",
+                        )
             finally:
-                # Clean up workspace on success; keep on failure for debugging
                 if run_workdir.exists():
                     try:
                         shutil.rmtree(run_workdir)
@@ -364,15 +750,15 @@ def process_run(
                 },
             )
         )
+        target_address = _target_address(session, run)
+        target_source_ref = _target_source_ref(session, run)
         for item in normalized_findings:
-            session.add(
-                Finding(
-                    run_id=run.id,
-                    title=item["title"],
-                    severity=item["severity"],
-                    evidence_refs=item["evidence_refs"],
-                    details=item.get("details", {}),
-                )
+            _persist_finding_with_kg(
+                session,
+                run=run,
+                item=item,
+                target_address=target_address,
+                target_source_ref=target_source_ref,
             )
 
         # --- COMPLETED ---------------------------------------------------
@@ -450,15 +836,15 @@ def renormalize_run(
 
     # Re-normalize and insert
     normalized_findings = normalize_findings(raw_payload)
+    target_address = _target_address(session, run)
+    target_source_ref = _target_source_ref(session, run)
     for item in normalized_findings:
-        session.add(
-            Finding(
-                run_id=run.id,
-                title=item["title"],
-                severity=item["severity"],
-                evidence_refs=item["evidence_refs"],
-                details=item.get("details", {}),
-            )
+        _persist_finding_with_kg(
+            session,
+            run=run,
+            item=item,
+            target_address=target_address,
+            target_source_ref=target_source_ref,
         )
     session.commit()
     return len(normalized_findings)
