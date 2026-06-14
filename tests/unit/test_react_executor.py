@@ -280,3 +280,45 @@ def test_executor_budget_caps_propagate_from_profile(monkeypatch, session, run_r
     )
     assert result.usage["stop_reason"] == "budget_exhausted"
     assert result.usage["iterations"] == 2
+
+
+def test_cli_mode_drives_loop_via_cli_adapter(monkeypatch, session, run_row):
+    """execute_network_react(cli_mode=True) routes the SAME loop through the
+    CLI adapter: a scripted CLI does a tool round then a final answer."""
+    import json as _json
+    import subprocess as _subprocess
+
+    import moonwing.worker.cli_agent_adapter as cca
+
+    responses = [
+        _json.dumps({"thought": "note the plan", "tool_call": {
+            "name": "meta_note", "arguments": {"note": "planning recon"}}}),
+        _json.dumps({"thought": "done", "final": {"findings": [
+            {"title": "Open SSH on 10.0.0.5:22", "severity": "info",
+             "affected_hosts": ["10.0.0.5"]}]}}),
+    ]
+    seq = iter(responses)
+
+    def fake_run(command, *a, **k):
+        envelope = _json.dumps({"type": "result", "result": next(seq)})
+        return _subprocess.CompletedProcess(
+            args=command, returncode=0, stdout=envelope, stderr="")
+
+    monkeypatch.setattr(cca.subprocess, "run", fake_run)
+
+    notes: list[str] = []
+    result = execute_network_react(
+        session=session,
+        run=run_row,
+        target_address="10.0.0.5",
+        api_key="",
+        profile_settings={"agentic_mode": True},
+        on_note=notes.append,
+        cli_mode=True,
+    )
+
+    assert "planning recon" in notes  # tool actually dispatched by Moonwing
+    assert result.usage["stop_reason"] == "final_answer"
+    findings = result.raw_payload["findings"]
+    assert len(findings) == 1
+    assert findings[0]["title"] == "Open SSH on 10.0.0.5:22"

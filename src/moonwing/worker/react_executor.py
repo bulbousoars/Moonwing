@@ -114,11 +114,24 @@ def execute_network_react(
     on_note: Callable[[str], None] | None = None,
     ai_instruction: str | None = None,
     timeout_seconds: int = 600,
+    cli_mode: bool = False,
+    cli_env: dict[str, str] | None = None,
+    workdir: str | None = None,
 ) -> ReActExecutionResult:
-    """Run an agentic network scan and return a normalize-able payload."""
+    """Run an agentic network scan and return a normalize-able payload.
+
+    ``cli_mode`` drives the same ReAct loop through a local AI CLI binary
+    (claude/codex/gemini) instead of a provider HTTP API, so CLI-credentialed
+    runs get full agentic parity with API mode.
+    """
     profile_settings = profile_settings or {}
 
-    adapter = get_adapter(run.provider)
+    if cli_mode:
+        from moonwing.worker.cli_agent_adapter import CliAgentAdapter
+
+        adapter = CliAgentAdapter(provider=run.provider, env=cli_env, cwd=workdir)
+    else:
+        adapter = get_adapter(run.provider)
     budget = _budget_from_profile(profile_settings)
     agent = ReActAgent(
         adapter=adapter,

@@ -651,6 +651,84 @@ def process_run(
                                 f"{sh_result.usage.get('hunter_iterations', 0)} hunter iterations"
                             ),
                         )
+                    elif _is_agentic_network_run(run.job_family, profile_settings):
+                        target_address = (
+                            staged_job.target_metadata.get("address")
+                            or staged_job.target_metadata.get("url")
+                            or staged_job.target_display_name
+                            or ""
+                        )
+                        logger.info(
+                            "run %s executing via CLI ReAct agent: provider=%s model=%s target=%s",
+                            run_id, run.provider, run.model, target_address,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=(
+                                f"Starting CLI agentic scan of {target_address} "
+                                f"with {run.provider}:{run.model}"
+                            ),
+                        )
+                        session.commit()
+
+                        def _on_cli_net_step(step):
+                            append_run_activity(
+                                run,
+                                stage="running",
+                                message=(
+                                    f"iter {step.iteration}: "
+                                    f"{(step.assistant_text or '').strip()[:200] or '(tool round)'}"
+                                ),
+                            )
+
+                        def _on_cli_net_tool(step, inv):
+                            outcome = "ok" if inv.result.ok else f"error: {inv.result.error}"
+                            append_run_activity(
+                                run,
+                                stage="running",
+                                message=f"tool {inv.call.name}({_short_args(inv.call.arguments)}) → {outcome[:160]}",
+                            )
+
+                        def _on_cli_net_note(note: str):
+                            append_run_activity(
+                                run, stage="running", message=f"note: {note[:200]}"
+                            )
+
+                        react_result = execute_network_react(
+                            session=session,
+                            run=run,
+                            target_address=target_address,
+                            api_key="",
+                            profile_settings=profile_settings,
+                            on_step=_on_cli_net_step,
+                            on_tool_invocation=_on_cli_net_tool,
+                            on_note=_on_cli_net_note,
+                            ai_instruction=_snapshot_ai_instruction(
+                                staged_job.execution_snapshot
+                            ),
+                            timeout_seconds=execution_timeout,
+                            cli_mode=True,
+                            cli_env=run_env or None,
+                            workdir=str(run_workdir),
+                        )
+                        raw_payload = react_result.raw_payload
+                        logger.info(
+                            "run %s CLI ReAct finished — %d findings, usage=%s",
+                            run_id,
+                            len(raw_payload.get("findings", [])),
+                            react_result.usage,
+                        )
+                        append_run_activity(
+                            run,
+                            stage="running",
+                            message=(
+                                f"CLI agentic scan finished: "
+                                f"{len(raw_payload.get('findings', []))} finding(s), "
+                                f"{react_result.usage.get('iterations')} iterations, "
+                                f"stop={react_result.usage.get('stop_reason')}"
+                            ),
+                        )
                     else:
                         # For network scans: run nmap first, then feed output to AI for analysis
                         command = list(staged_job.command)
