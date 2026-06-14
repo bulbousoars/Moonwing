@@ -129,7 +129,11 @@ def execute_network_react(
     if cli_mode:
         from moonwing.worker.cli_agent_adapter import CliAgentAdapter
 
-        adapter = CliAgentAdapter(provider=run.provider, env=cli_env, cwd=workdir)
+        # Deliberately do NOT pass the scan workdir: the CLI agent runs
+        # hermetically so it never auto-loads the worker's authorization
+        # CLAUDE.md (which Claude Code rejects as prompt injection). The
+        # recon tools run in-process, so no workspace is needed.
+        adapter = CliAgentAdapter(provider=run.provider, env=cli_env)
     else:
         adapter = get_adapter(run.provider)
     budget = _budget_from_profile(profile_settings)

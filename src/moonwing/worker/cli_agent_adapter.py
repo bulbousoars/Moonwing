@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import tempfile
 import uuid
 from typing import Any
 
@@ -222,7 +223,13 @@ class CliAgentAdapter:
     ) -> None:
         self.provider = provider
         self._env = env
-        self._cwd = cwd
+        # Run the CLI hermetically. The network ReAct agent's tools execute
+        # in-process (Moonwing runs them), so the CLI needs no workspace — and
+        # giving it the scan workdir makes it auto-load ambient context files
+        # (e.g. the authorization CLAUDE.md the worker writes), which Claude
+        # Code flags as a prompt-injection attack and refuses. A clean empty
+        # dir with no project files avoids that entirely.
+        self._cwd = cwd or tempfile.mkdtemp(prefix="moonwing-cli-agent-")
 
     # --- LLMAdapter protocol ----------------------------------------
 

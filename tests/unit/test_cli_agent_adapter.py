@@ -150,6 +150,29 @@ def test_chat_nonzero_exit_raises_llmerror(monkeypatch):
                                 tools=None, model="claude-x")
 
 
+def test_adapter_runs_hermetically_in_clean_tempdir(monkeypatch):
+    """With no cwd, the adapter must invoke the CLI in a private empty dir so
+    it never auto-loads an ambient CLAUDE.md (prompt-injection refusal)."""
+    import os
+
+    captured = {}
+
+    def fake_run(command, *a, **k):
+        captured["cwd"] = k.get("cwd")
+        inner = json.dumps({"final": {"findings": []}})
+        return subprocess.CompletedProcess(
+            args=command, returncode=0,
+            stdout=json.dumps({"type": "result", "result": inner}), stderr="")
+
+    monkeypatch.setattr(cca.subprocess, "run", fake_run)
+    adapter = CliAgentAdapter(provider="anthropic")
+    adapter.chat_with_tools(messages=[{"role": "user", "content": "go"}],
+                            tools=None, model="claude-x")
+    cwd = captured["cwd"]
+    assert cwd and os.path.isdir(cwd)
+    assert not os.path.exists(os.path.join(cwd, "CLAUDE.md"))  # clean room
+
+
 def test_chat_missing_binary_raises_llmerror(monkeypatch):
     def boom(*a, **k):
         raise FileNotFoundError("no claude")
