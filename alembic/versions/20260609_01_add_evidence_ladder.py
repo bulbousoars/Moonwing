@@ -1,8 +1,12 @@
 """add evidence ladder to findings
 
-Revision ID: 20260607_01
+Revision ID: 20260609_01
 Revises: 20260514_01
 Create Date: 2026-06-07
+
+Renumbered from 20260607_01 during the prod<->repo reconciliation (2026-06-13)
+to resolve a revision-id collision with prod's 20260607_01_add_ai_model_registry.
+Logic unchanged.
 """
 
 from alembic import op
@@ -10,7 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "20260607_01"
+revision = "20260609_01"
 down_revision = "20260514_01"
 branch_labels = None
 depends_on = None

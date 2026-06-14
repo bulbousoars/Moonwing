@@ -13,7 +13,10 @@ def test_launch_form_explains_network_scan_and_source_hunt():
     assert "What is wrong in the code" in template
     assert 'value="network_scan"' in template
     assert 'value="source_hunt"' in template
-    assert 'class="credential-display"' in template
+    # Merged run form (prod model-registry version) selects credentials via a
+    # dropdown with provider/model discovery rather than main's read-only
+    # credential-display status element.
+    assert 'id="credential_id"' in template
     assert "_cli_tools_probe.html" not in template
 
 

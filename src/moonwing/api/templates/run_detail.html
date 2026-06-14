@@ -49,7 +49,7 @@
   <div class="detail-card">
     <h3>References</h3>
     <div class="detail-row"><span class="label">User</span><span class="value"><a href="/users/{{ run.user_id }}" class="uuid">{{ run.user_id[:8] }}...</a></span></div>
-    <div class="detail-row"><span class="label">Credential</span><span class="value"><a href="/credentials/{{ run.credential_id }}" class="uuid">{{ run.credential_id[:8] }}...</a></span></div>
+    <div class="detail-row"><span class="label">Credential</span><span class="value">{% if run.credential_id %}<a href="/credentials/{{ run.credential_id }}" class="uuid">{{ run.credential_id[:8] }}...</a>{% else %}CLI session{% endif %}</span></div>
     <div class="detail-row"><span class="label">Runtime Profile</span><span class="value"><a href="/runtime-profiles/{{ run.runtime_profile_id }}" class="uuid">{{ run.runtime_profile_id[:8] }}...</a></span></div>
     <div class="detail-row"><span class="label">Target</span><span class="value">{% if run.target_id %}<a href="/targets/{{ run.target_id }}" class="uuid">{{ run.target_id[:8] }}...</a>{% else %}-{% endif %}</span></div>
   </div>
@@ -62,6 +62,60 @@
     <p>{{ run.execution_snapshot.failure.message }}</p>
   </div>
   <span>{{ run.execution_snapshot.failure.type }}</span>
+</section>
+{% endif %}
+
+{% if run.execution_snapshot and run.execution_snapshot.summary_report %}
+{% set report = run.execution_snapshot.summary_report %}
+<section class="run-report-panel" aria-label="Run summary report">
+  <div class="run-report-header">
+    <div>
+      <h2>{{ report.title or 'Run Summary' }}</h2>
+      <p>{{ report.overview }}</p>
+    </div>
+    <div class="run-report-score">
+      <span>{{ report.finding_count }}</span>
+      <small>finding{{ 's' if report.finding_count != 1 }}</small>
+    </div>
+  </div>
+  <div class="run-report-grid">
+    <div>
+      <h3>Severity</h3>
+      <div class="report-severity-list">
+        {% for severity, count in report.severity_counts.items() %}
+        <span class="badge badge-{{ severity }}">{{ severity }}: {{ count }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <h3>Affected Services</h3>
+      {% if report.affected_services %}
+      <p>{{ report.affected_services|join(', ') }}</p>
+      {% else %}
+      <p>No affected services reported.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% if report.key_findings %}
+  <div class="run-report-section">
+    <h3>Key Findings</h3>
+    <ul>
+      {% for item in report.key_findings %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if report.recommended_actions %}
+  <div class="run-report-section">
+    <h3>Recommended Actions</h3>
+    <ul>
+      {% for item in report.recommended_actions %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 </section>
 {% endif %}
 

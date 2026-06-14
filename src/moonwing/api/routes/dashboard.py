@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -20,6 +20,9 @@ from sqlalchemy.orm import Session
 from moonwing.api.deps import get_db
 from moonwing.api.deps import _get_settings
 from moonwing.services.host_cli_discovery import scan_host_ai_tools
+from moonwing.services.ai_provider_probe import discover_api_models, discover_cli_models
+from moonwing.services.ai_model_registry import list_enabled_models, list_models, replace_discovered_models, set_model_enabled
+from moonwing.services.cli_tools import list_cli_tools, update_cli_tool
 from moonwing.services.ai_provider_probe import (
     PROVIDER_DEFAULT_MODELS,
     PROVIDER_MODELS,
@@ -100,6 +103,23 @@ from moonwing.db.models import (
 )
 
 router = APIRouter()
+
+
+AI_PROVIDER_LABELS = {
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "google": "Google Gemini",
+    "openrouter": "OpenRouter",
+    "ollama": "Ollama",
+}
+
+SUPPORTED_AI_MODES = {
+    "openai": ["api", "cli"],
+    "anthropic": ["api", "cli"],
+    "google": ["api", "cli"],
+    "openrouter": ["api"],
+    "ollama": ["api", "cli"],
+}
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / 'templates')
 
 
@@ -899,6 +919,226 @@ def system_host_terminal_redirect():
     return RedirectResponse(url='/system/cli-tools', status_code=301)
 
 
+def _discover_api_models_for_credential(credential: Credential) -> list[str]:
+    if credential.provider != "ollama" and not credential.encrypted_api_key:
+        return []
+    api_key = ""
+    if credential.encrypted_api_key:
+        try:
+            api_key = decrypt_api_key(credential.encrypted_api_key)
+        except CryptoError:
+            return []
+    result = discover_api_models(provider=credential.provider, api_key=api_key, timeout=4)
+    return result["models"] if result.get("ok") else []
+
+
+def _discover_cli_models_for_provider(provider: str) -> list[str]:
+    result = discover_cli_models(provider=provider, timeout=20, use_sudo=True)
+    return result["models"] if result.get("ok") else []
+
+
+def discover_models_for_selection(
+    db: Session,
+    *,
+    provider: str,
+    execution_mode: str,
+    credential_id: str = "",
+) -> dict:
+    provider = provider.strip().lower()
+    execution_mode = execution_mode.strip().lower()
+    if provider not in SUPPORTED_AI_MODES or execution_mode not in SUPPORTED_AI_MODES[provider]:
+        return {"ok": False, "models": [], "message": "None discovered. Check settings or CLI login."}
+
+    if execution_mode == "api":
+        credential: Credential | None = None
+        if credential_id.strip():
+            try:
+                credential = db.get(Credential, UUID(credential_id))
+            except ValueError:
+                credential = None
+        if credential is None:
+            credential = (
+                db.query(Credential)
+                .filter(Credential.provider == provider)
+                .order_by(Credential.display_name)
+                .first()
+            )
+        if not credential or credential.provider != provider:
+            return {"ok": False, "models": [], "message": "None discovered. Check settings or CLI login."}
+        models = _discover_api_models_for_credential(credential)
+        source = "api"
+    else:
+        models = _discover_cli_models_for_provider(provider)
+        source = "cli"
+
+    if not models:
+        return {"ok": False, "models": [], "message": "None discovered. Check settings or CLI login."}
+    replace_discovered_models(
+        db,
+        provider=provider,
+        execution_mode=execution_mode,
+        model_ids=models,
+        source=source,
+    )
+    db.commit()
+    enabled_models = list_enabled_models(db, provider=provider, execution_mode=execution_mode)
+    return {"ok": bool(enabled_models), "models": enabled_models, "message": ""}
+
+
+def _credential_options(db: Session, credential: Credential) -> dict:
+    provider = credential.provider
+    has_api_key = bool(credential.encrypted_api_key)
+    execution_modes = []
+    models = []
+    model_options: dict[str, list[str]] = {}
+    supported_modes = SUPPORTED_AI_MODES.get(provider, [])
+
+    if "api" in supported_modes and (has_api_key or provider == "ollama"):
+        registry_models = list_enabled_models(db, provider=provider, execution_mode="api")
+        model_options["api"] = registry_models
+        models.extend(registry_models)
+        execution_modes.append("api")
+    return {
+        "id": str(credential.id),
+        "display_name": credential.display_name,
+        "provider": provider,
+        "has_api_key": has_api_key,
+        "execution_modes": execution_modes,
+        "model_options": model_options,
+        "models": sorted(set(models), key=models.index),
+    }
+
+
+def _default_ai_selection(credentials: list[dict]) -> dict:
+    for credential in credentials:
+        for mode in credential["execution_modes"]:
+            mode_models = credential["model_options"].get(mode, [])
+            if mode_models:
+                return {
+                    "provider": credential["provider"],
+                    "execution_mode": mode,
+                    "model": mode_models[0],
+                    "credential_id": credential["id"],
+                }
+    return {}
+
+
+def _default_ai_selection_from_registry(db: Session) -> dict:
+    for provider, modes in SUPPORTED_AI_MODES.items():
+        for mode in modes:
+            models = list_enabled_models(db, provider=provider, execution_mode=mode)
+            if models:
+                return {
+                    "provider": provider,
+                    "execution_mode": mode,
+                    "model": models[0],
+                    "credential_id": "",
+                }
+    return {}
+
+
+def _run_form_context(
+    db: Session,
+    *,
+    target: str | None = None,
+    selected: dict | None = None,
+    error: str = "",
+) -> dict:
+    targets = [
+        {'id': str(t.id), 'display_name': t.display_name, 'target_type': t.target_type}
+        for t in db.query(Target).order_by(Target.display_name).all()
+    ]
+    users = [
+        {'id': str(u.id), 'display_name': u.display_name, 'email': u.email}
+        for u in db.query(User).order_by(User.display_name).all()
+    ]
+    credentials = [
+        _credential_options(db, c)
+        for c in db.query(Credential).order_by(Credential.display_name).all()
+    ]
+    profiles = [
+        {'id': str(p.id), 'name': p.name}
+        for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.name).all()
+    ]
+    effective_selected = dict(_default_ai_selection(credentials) or _default_ai_selection_from_registry(db))
+    effective_selected.update({key: value for key, value in (selected or {}).items() if value})
+    return {
+        'active': 'launch',
+        'targets': targets,
+        'users': users,
+        'credentials': credentials,
+        'profiles': profiles,
+        'preselect_target': target or '',
+        'ai_providers': [
+            {"value": value, "label": label}
+            for value, label in AI_PROVIDER_LABELS.items()
+        ],
+        'ai_options': {
+            provider: {
+                mode: list_enabled_models(db, provider=provider, execution_mode=mode)
+                for mode in modes
+            }
+            for provider, modes in SUPPORTED_AI_MODES.items()
+        },
+        'selected': effective_selected,
+        'error': error,
+    }
+
+
+def _validate_run_selection(
+    db: Session,
+    *,
+    job_family: str,
+    user_id: str,
+    credential_id: str,
+    runtime_profile_id: str,
+    provider: str,
+    model: str,
+    execution_mode: str,
+) -> tuple[User, Credential | None, RuntimeProfileRecord]:
+    if job_family not in {"network_scan", "source_hunt"}:
+        raise ValueError("Scan Type is required.")
+    if provider not in SUPPORTED_AI_MODES:
+        raise ValueError("AI Provider is required.")
+    if execution_mode not in SUPPORTED_AI_MODES[provider]:
+        raise ValueError("AI Execution Mode is required for the selected provider.")
+
+    try:
+        user_uuid = UUID(user_id)
+        profile_uuid = UUID(runtime_profile_id)
+    except ValueError as exc:
+        raise ValueError("All required selections must be chosen.") from exc
+
+    user = db.get(User, user_uuid)
+    profile = db.get(RuntimeProfileRecord, profile_uuid)
+    if not user or not profile:
+        raise ValueError("All required selections must be chosen.")
+
+    credential: Credential | None = None
+    if execution_mode == "cli" and not credential_id.strip():
+        if model not in list_enabled_models(db, provider=provider, execution_mode=execution_mode):
+            raise ValueError("AI Model is required for the selected provider and execution mode.")
+        return user, None, profile
+
+    if credential_id.strip():
+        try:
+            credential = db.get(Credential, UUID(credential_id))
+        except ValueError as exc:
+            raise ValueError("Please add a matching credential in settings.") from exc
+
+    if execution_mode == "api" and not credential:
+        raise ValueError("Please add a matching credential in settings.")
+
+    available = _credential_options(db, credential)
+    if (
+        credential.provider != provider
+        or execution_mode not in available["execution_modes"]
+        or model not in available["model_options"].get(execution_mode, [])
+    ):
+        raise ValueError("Credential is not available for the selected provider, execution mode, and model.")
+    return user, credential, profile
+
+
 def _build_run_form_context(request: Request, db: Session, *, target: str = '', error: str = '') -> dict:
     targets = [
         {'id': str(t.id), 'display_name': t.display_name, 'target_type': t.target_type}
@@ -942,7 +1182,30 @@ def _render_run_form_error(request: Request, db: Session, *, error: str):
 @router.get('/runs/new', response_class=HTMLResponse)
 def run_form(request: Request, db: Session = Depends(get_db), target: str | None = None):
     _require(request, 'launch_scan')
-    return _render(request, 'run_form.html', _build_run_form_context(request, db, target=target or ''))
+    return _render(request, 'run_form.html', _run_form_context(db, target=target))
+
+
+@router.post('/runs/models/discover')
+def discover_run_models(
+    request: Request,
+    db: Session = Depends(get_db),
+    provider: str = Form(''),
+    execution_mode: str = Form(''),
+    credential_id: str = Form(''),
+):
+    _require(request, 'launch_scan')
+    result = discover_models_for_selection(
+        db,
+        provider=provider,
+        execution_mode=execution_mode,
+        credential_id=credential_id,
+    )
+    credentials = [
+        _credential_options(db, c)
+        for c in db.query(Credential).order_by(Credential.display_name).all()
+    ]
+    result["credentials"] = credentials
+    return result
 
 
 @router.post('/runs/new')
@@ -952,7 +1215,7 @@ def run_create(
     job_family: str = Form(...),
     target_id: str = Form(''),
     user_id: str = Form(...),
-    credential_id: str = Form(...),
+    credential_id: str = Form(''),
     runtime_profile_id: str = Form(...),
     provider: str = Form('openai'),
     model: str = Form('gpt-5.5'),
@@ -960,34 +1223,43 @@ def run_create(
     ai_instruction: str = Form(''),
 ):
     _require(request, 'launch_scan')
-    # In API mode, the credential's provider must match the run's provider —
-    # otherwise the worker will use the wrong API key and the run will fail.
-    # CLI mode uses local auth (claude/codex/gemini login), so any credential
-    # is acceptable for record-keeping.
-    if execution_mode == 'api':
-        cred = db.query(Credential).filter(Credential.id == UUID(credential_id)).first()
-        if cred is None:
-            return _render_run_form_error(
-                request, db,
-                error='Selected credential not found. Pick a credential from the list and try again.',
-            )
-        if cred.provider != provider and provider != 'ollama':
-            return _render_run_form_error(
-                request, db,
-                error=f"Credential '{cred.display_name}' is for {cred.provider}, but the selected provider is {provider}. "
-                      f"Pick a {provider} credential, switch to CLI execution mode, or change the provider.",
-            )
+    selected = {
+        'job_family': job_family,
+        'target_id': target_id,
+        'user_id': user_id,
+        'credential_id': credential_id,
+        'runtime_profile_id': runtime_profile_id,
+        'provider': provider,
+        'model': model,
+        'execution_mode': execution_mode,
+    }
+    try:
+        user, credential, profile = _validate_run_selection(
+            db,
+            job_family=job_family,
+            user_id=user_id,
+            credential_id=credential_id,
+            runtime_profile_id=runtime_profile_id,
+            provider=provider,
+            model=model,
+            execution_mode=execution_mode,
+        )
+    except ValueError as exc:
+        return _render(
+            request,
+            'run_form.html',
+            _run_form_context(db, target=target_id, selected=selected, error=str(exc)),
+        )
     exec_snap: dict = {}
     instr = (ai_instruction or '').strip()
     if instr:
         exec_snap['ai_instruction'] = instr[:DEFAULT_AI_INSTRUCTION_MAX_CHARS]
-
     run = Run(
         job_family=job_family,
         status='queued',
-        user_id=UUID(user_id),
-        credential_id=UUID(credential_id),
-        runtime_profile_id=UUID(runtime_profile_id),
+        user_id=user.id,
+        credential_id=credential.id if credential else None,
+        runtime_profile_id=profile.id,
         target_id=UUID(target_id) if target_id.strip() else None,
         provider=provider,
         model=model,
@@ -2531,16 +2803,89 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
         }
         for p in db.query(RuntimeProfileRecord).order_by(RuntimeProfileRecord.created_at.desc()).all()
     ]
+    ai_models = [
+        {
+            'id': str(m.id),
+            'provider': m.provider,
+            'execution_mode': m.execution_mode,
+            'model_id': m.model_id,
+            'source': m.source,
+            'is_enabled': m.is_enabled,
+            'last_discovered_at': m.last_discovered_at.isoformat() if m.last_discovered_at else None,
+        }
+        for m in list_models(db)
+    ]
     return _render(request, 'settings.html', {
         'active': 'settings',
         'targets': targets,
         'credentials': credentials,
         'users': users,
         'profiles': profiles,
+        'ai_models': ai_models,
+        'cli_tools': list_cli_tools(settings=_get_settings()),
+        'ai_providers': [
+            {"value": value, "label": label}
+            for value, label in AI_PROVIDER_LABELS.items()
+        ],
+        'supported_ai_modes': SUPPORTED_AI_MODES,
     })
 
 
 # ── State Machine ──────────────────────────────────────────────────────
+
+@router.post('/settings/models/discover-all')
+def settings_models_discover_all(request: Request, db: Session = Depends(get_db)):
+    _require(request, 'manage_credentials')
+    for credential in db.query(Credential).order_by(Credential.display_name).all():
+        if "api" in SUPPORTED_AI_MODES.get(credential.provider, []):
+            discover_models_for_selection(db, provider=credential.provider, execution_mode="api", credential_id=str(credential.id))
+    for provider, modes in SUPPORTED_AI_MODES.items():
+        if "cli" in modes:
+            discover_models_for_selection(db, provider=provider, execution_mode="cli")
+    return RedirectResponse(url='/settings?tab=models', status_code=303)
+
+
+@router.post('/settings/models/discover-provider')
+def settings_models_discover_provider(
+    request: Request,
+    db: Session = Depends(get_db),
+    provider: str = Form(''),
+    execution_mode: str = Form('api'),
+):
+    _require(request, 'manage_credentials')
+    discover_models_for_selection(db, provider=provider, execution_mode=execution_mode)
+    return RedirectResponse(url='/settings?tab=models', status_code=303)
+
+
+@router.post('/settings/models/{model_id}/enable')
+def settings_model_enable(model_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'manage_credentials')
+    set_model_enabled(db, model_uuid=model_id, enabled=True)
+    db.commit()
+    return RedirectResponse(url='/settings?tab=models', status_code=303)
+
+
+@router.post('/settings/models/{model_id}/disable')
+def settings_model_disable(model_id: UUID, request: Request, db: Session = Depends(get_db)):
+    _require(request, 'manage_credentials')
+    set_model_enabled(db, model_uuid=model_id, enabled=False)
+    db.commit()
+    return RedirectResponse(url='/settings?tab=models', status_code=303)
+
+
+@router.post('/settings/cli-tools/check')
+def settings_cli_tools_check(request: Request):
+    _require(request, 'manage_credentials')
+    list_cli_tools(settings=_get_settings())
+    return RedirectResponse(url='/settings?tab=cli-tools', status_code=303)
+
+
+@router.post('/settings/cli-tools/{tool_name}/update')
+def settings_cli_tool_update(tool_name: str, request: Request, background_tasks: BackgroundTasks):
+    _require(request, 'manage_credentials')
+    background_tasks.add_task(update_cli_tool, tool_name, settings=_get_settings())
+    return RedirectResponse(url='/settings?tab=cli-tools', status_code=303)
+
 
 @router.get('/state-machine', response_class=HTMLResponse)
 def state_machine_page(request: Request):
