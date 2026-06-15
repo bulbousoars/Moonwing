@@ -178,6 +178,46 @@ def test_budget_iteration_cap_stops_loop():
     assert "iterations" in (t.error or "")
 
 
+def test_last_budgeted_iteration_forces_final_answer_turn():
+    reg = ToolRegistry()
+    reg.register(_echo_spec())
+
+    class ToolUntilFinalAdapter:
+        provider = "fake"
+
+        def __init__(self):
+            self.calls: list[dict[str, Any]] = []
+
+        def chat_with_tools(self, **kwargs):
+            self.calls.append(kwargs)
+            if kwargs.get("tools"):
+                return _resp(
+                    tool_calls=[LLMToolCall(id="c", name="echo", arguments={"probe": True})]
+                )
+            return _resp(text='{"findings": [{"title": "synthesized"}]}')
+
+        def list_models(self, **kwargs):
+            return []
+
+    adapter = ToolUntilFinalAdapter()
+    agent = ReActAgent(adapter=adapter, registry=reg, budget=Budget(max_iterations=2))
+
+    t = agent.run(
+        system_prompt="s",
+        user_prompt="u",
+        model="m",
+        api_key="k",
+        ctx=ToolContext(run_id=None),
+    )
+
+    assert t.stop_reason == ReActStopReason.FINAL_ANSWER
+    assert "synthesized" in t.final_text
+    assert len(adapter.calls) == 2
+    assert adapter.calls[0]["tools"]
+    assert adapter.calls[1]["tools"] is None
+    assert "No further tool calls are available" in adapter.calls[1]["messages"][-1]["content"]
+
+
 def test_provider_error_returns_partial_transcript():
     reg = ToolRegistry()
     reg.register(_echo_spec())

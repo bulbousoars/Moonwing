@@ -64,6 +64,10 @@ ToolHook = Callable[[ReActStep, ReActToolInvocation], None]
 
 
 _NO_PROGRESS_GUARD = 2  # consecutive empty/no-call iterations before bailing
+_FINAL_TURN_PROMPT = (
+    "No further tool calls are available in this run. Use the evidence already "
+    "collected in the conversation and return your final answer now."
+)
 
 
 class ReActAgent:
@@ -192,10 +196,23 @@ class ReActAgent:
                     error=str(exc),
                 )
 
+            force_final_turn = (
+                self._budget.max_iterations is not None
+                and self._budget.iterations_used >= self._budget.max_iterations
+            )
+            messages_for_turn = messages
+            tools_for_turn = tools_schema or None
+            if force_final_turn:
+                messages_for_turn = [
+                    *messages,
+                    {"role": "user", "content": _FINAL_TURN_PROMPT},
+                ]
+                tools_for_turn = None
+
             try:
                 response: LLMResponse = self._adapter.chat_with_tools(
-                    messages=messages,
-                    tools=tools_schema or None,
+                    messages=messages_for_turn,
+                    tools=tools_for_turn,
                     model=model,
                     api_key=api_key,
                     temperature=temperature,
