@@ -173,6 +173,36 @@ def test_adapter_runs_hermetically_in_clean_tempdir(monkeypatch):
     assert not os.path.exists(os.path.join(cwd, "CLAUDE.md"))  # clean room
 
 
+def test_adapter_supplies_service_account_home_when_parent_env_lacks_home(monkeypatch):
+    """systemd services may omit HOME; CLI auth stores session state there."""
+    import os
+
+    captured = {}
+
+    def fake_run(command, *a, **k):
+        captured["env"] = k.get("env")
+        inner = json.dumps({"final": {"findings": []}})
+        return subprocess.CompletedProcess(
+            args=command, returncode=0,
+            stdout=json.dumps({"type": "result", "result": inner}), stderr="")
+
+    monkeypatch.setattr(cca.subprocess, "run", fake_run)
+    monkeypatch.setattr(cca.os, "environ", {"PATH": "/usr/bin", "USER": "root"})
+    monkeypatch.setattr(cca.os, "getuid", lambda: 0, raising=False)
+    monkeypatch.setattr(cca, "pwd", type("Pwd", (), {
+        "getpwuid": staticmethod(lambda uid: type("Pw", (), {"pw_dir": "/root", "pw_name": "root"})())
+    }))
+
+    adapter = CliAgentAdapter(provider="anthropic")
+    adapter.chat_with_tools(messages=[{"role": "user", "content": "go"}],
+                            tools=None, model="claude-x")
+
+    assert captured["env"]["HOME"] == "/root"
+    assert captured["env"]["USER"] == "root"
+    assert captured["env"]["LOGNAME"] == "root"
+    assert captured["env"]["PATH"] == "/usr/bin"
+
+
 def test_chat_missing_binary_raises_llmerror(monkeypatch):
     def boom(*a, **k):
         raise FileNotFoundError("no claude")

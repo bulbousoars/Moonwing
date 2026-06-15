@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import tempfile
 import uuid
@@ -34,6 +35,11 @@ from typing import Any
 
 from moonwing.core.llm import LLMError, LLMResponse, LLMToolCall, LLMUsage
 from moonwing.worker.clearwing_runner import build_ai_cli_command
+
+try:
+    import pwd
+except ImportError:  # pragma: no cover - Windows test runners do not have pwd.
+    pwd = None  # type: ignore[assignment]
 
 logger = logging.getLogger("moonwing.worker.cli_agent_adapter")
 
@@ -203,6 +209,38 @@ def _find_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _build_cli_env(overrides: dict[str, str] | None) -> dict[str, str]:
+    """Return an env suitable for interactive-login-backed CLI tools.
+
+    systemd services commonly omit HOME. Claude/Codex/Gemini store login
+    state under the invoking account's home directory, so a missing HOME makes
+    a logged-in service account look unauthenticated.
+    """
+    env = dict(os.environ)
+    if overrides:
+        env.update(overrides)
+
+    account_name = ""
+    account_home = ""
+    if hasattr(os, "getuid") and pwd is not None:
+        try:
+            entry = pwd.getpwuid(os.getuid())
+            account_home = getattr(entry, "pw_dir", "") or ""
+            account_name = getattr(entry, "pw_name", "") or ""
+        except (KeyError, OSError):
+            pass
+
+    if not env.get("HOME"):
+        home = account_home or os.path.expanduser("~")
+        if home and home != "~":
+            env["HOME"] = home
+    if account_name:
+        env.setdefault("USER", account_name)
+        env.setdefault("LOGNAME", account_name)
+    env.setdefault("PATH", os.defpath)
+    return env
+
+
 def _brace_slice(text: str) -> str | None:
     first = text.find("{")
     last = text.rfind("}")
@@ -267,7 +305,7 @@ class CliAgentAdapter:
                 text=True,
                 timeout=timeout,
                 cwd=self._cwd,
-                env=self._env,
+                env=_build_cli_env(self._env),
             )
         except FileNotFoundError as exc:
             raise LLMError(
