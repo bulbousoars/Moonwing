@@ -76,6 +76,6 @@ curl -fsS http://127.0.0.1:8000/health && echo
 echo "==> Host AI tools API (requires admin session cookie for browser; this is server-side)"
 "${COMPOSE[@]}" -f docker-compose.yml -f "$OVERLAY" --profile app exec -T moonwing-api \
   python -c "from moonwing.config import Settings; from moonwing.services.host_cli_discovery import scan_host_ai_tools; import json; print(json.dumps(scan_host_ai_tools(Settings()), indent=2))" \
-  2>/dev/null || echo "(exec check skipped — open http://192.168.1.215:8000/system/cli-tools in browser)"
+  2>/dev/null || echo "(exec check skipped — open http://192.168.1.215:8000/settings?tab=ai-tools in browser)"
 
 echo "Done. UI: http://192.168.1.215:8000"

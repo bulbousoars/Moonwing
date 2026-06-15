@@ -42,7 +42,8 @@ def test_target_form_hints_which_job_family_to_use():
 
 
 def test_system_cli_tools_page_scans_docker_host():
-    template = (ROOT / "src/moonwing/api/templates/system_cli_tools.html").read_text(encoding="utf-8")
+    # Host scan UI now lives in the _host_ai_tools.html partial, included by the AI Tools settings tab.
+    template = (ROOT / "src/moonwing/api/templates/_host_ai_tools.html").read_text(encoding="utf-8")
     assert "Docker host" in template
     assert "cursor" in template.lower()
     assert "kimi" in template.lower()

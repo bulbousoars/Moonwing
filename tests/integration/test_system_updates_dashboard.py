@@ -179,22 +179,13 @@ def test_system_updates_apply_success_redirect(monkeypatch, upd_client):
     assert 'applied=1' in res.headers.get('location', '')
 
 
-def test_cli_tools_page_forbidden_viewer(upd_client):
-    app, ids = upd_client
-    client = _session_client(app, ids['viewer'], role='viewer')
-    res = client.get('/system/cli-tools')
-    assert res.status_code == 403
-
-
-def test_cli_tools_page_ok_admin(upd_client):
+def test_cli_tools_page_redirects_to_settings(upd_client):
+    # Retired standalone page now redirects into the merged AI Tools settings tab.
     app, ids = upd_client
     client = _session_client(app, ids['admin'])
-    res = client.get('/system/cli-tools')
-    assert res.status_code == 200
-    assert b'Host AI tools' in res.content
-    assert b'Claude' in res.content or b'claude' in res.content
-    assert b'Cursor' in res.content
-    assert b'Enable live shell' not in res.content
+    res = client.get('/system/cli-tools', follow_redirects=False)
+    assert res.status_code == 301
+    assert res.headers.get('location', '').endswith('/settings?tab=ai-tools')
 
 
 def test_host_terminal_legacy_redirect(upd_client):
@@ -202,4 +193,4 @@ def test_host_terminal_legacy_redirect(upd_client):
     client = _session_client(app, ids['admin'])
     res = client.get('/system/host-terminal', follow_redirects=False)
     assert res.status_code == 301
-    assert res.headers.get('location', '').endswith('/system/cli-tools')
+    assert res.headers.get('location', '').endswith('/settings?tab=ai-tools')

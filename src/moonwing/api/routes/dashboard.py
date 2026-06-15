@@ -899,24 +899,16 @@ def system_updates_reboot(request: Request, db: Session = Depends(get_db), confi
     return RedirectResponse(url=f'/system/updates?reboot={"1" if ok else "0"}', status_code=303)
 
 
-@router.get('/system/cli-tools', response_class=HTMLResponse)
-def system_cli_tools_page(request: Request, db: Session = Depends(get_db)):
-    _require(request, 'system_updates')
-    settings = _get_settings()
-    return _render(
-        request,
-        'system_cli_tools.html',
-        {
-            'active': 'system_cli_tools',
-            'host_scan': scan_host_ai_tools(settings),
-        },
-    )
+@router.get('/system/cli-tools', include_in_schema=False)
+def system_cli_tools_page():
+    """Retired standalone page — host AI tools now live under the merged AI Tools settings tab."""
+    return RedirectResponse(url='/settings?tab=ai-tools', status_code=301)
 
 
 @router.get('/system/host-terminal', include_in_schema=False)
 def system_host_terminal_redirect():
     """Legacy URL — CLI page no longer includes an in-browser shell."""
-    return RedirectResponse(url='/system/cli-tools', status_code=301)
+    return RedirectResponse(url='/settings?tab=ai-tools', status_code=301)
 
 
 def _discover_api_models_for_credential(credential: Credential) -> list[str]:
@@ -2823,6 +2815,7 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
         'profiles': profiles,
         'ai_models': ai_models,
         'cli_tools': list_cli_tools(settings=_get_settings()),
+        'host_scan': scan_host_ai_tools(_get_settings()),
         'ai_providers': [
             {"value": value, "label": label}
             for value, label in AI_PROVIDER_LABELS.items()
@@ -2842,7 +2835,7 @@ def settings_models_discover_all(request: Request, db: Session = Depends(get_db)
     for provider, modes in SUPPORTED_AI_MODES.items():
         if "cli" in modes:
             discover_models_for_selection(db, provider=provider, execution_mode="cli")
-    return RedirectResponse(url='/settings?tab=models', status_code=303)
+    return RedirectResponse(url='/settings?tab=ai-tools', status_code=303)
 
 
 @router.post('/settings/models/discover-provider')
@@ -2854,7 +2847,7 @@ def settings_models_discover_provider(
 ):
     _require(request, 'manage_credentials')
     discover_models_for_selection(db, provider=provider, execution_mode=execution_mode)
-    return RedirectResponse(url='/settings?tab=models', status_code=303)
+    return RedirectResponse(url='/settings?tab=ai-tools', status_code=303)
 
 
 @router.post('/settings/models/{model_id}/enable')
@@ -2862,7 +2855,7 @@ def settings_model_enable(model_id: UUID, request: Request, db: Session = Depend
     _require(request, 'manage_credentials')
     set_model_enabled(db, model_uuid=model_id, enabled=True)
     db.commit()
-    return RedirectResponse(url='/settings?tab=models', status_code=303)
+    return RedirectResponse(url='/settings?tab=ai-tools', status_code=303)
 
 
 @router.post('/settings/models/{model_id}/disable')
@@ -2870,21 +2863,21 @@ def settings_model_disable(model_id: UUID, request: Request, db: Session = Depen
     _require(request, 'manage_credentials')
     set_model_enabled(db, model_uuid=model_id, enabled=False)
     db.commit()
-    return RedirectResponse(url='/settings?tab=models', status_code=303)
+    return RedirectResponse(url='/settings?tab=ai-tools', status_code=303)
 
 
 @router.post('/settings/cli-tools/check')
 def settings_cli_tools_check(request: Request):
     _require(request, 'manage_credentials')
     list_cli_tools(settings=_get_settings())
-    return RedirectResponse(url='/settings?tab=cli-tools', status_code=303)
+    return RedirectResponse(url='/settings?tab=ai-tools', status_code=303)
 
 
 @router.post('/settings/cli-tools/{tool_name}/update')
 def settings_cli_tool_update(tool_name: str, request: Request, background_tasks: BackgroundTasks):
     _require(request, 'manage_credentials')
     background_tasks.add_task(update_cli_tool, tool_name, settings=_get_settings())
-    return RedirectResponse(url='/settings?tab=cli-tools', status_code=303)
+    return RedirectResponse(url='/settings?tab=ai-tools', status_code=303)
 
 
 @router.get('/state-machine', response_class=HTMLResponse)

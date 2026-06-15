@@ -12,8 +12,7 @@
 <div class="settings-tabs">
   <button class="settings-tab active" onclick="showTab('targets')" id="tab-targets">Targets</button>
   <button class="settings-tab" onclick="showTab('credentials')" id="tab-credentials">Credentials</button>
-  <button class="settings-tab" onclick="showTab('models')" id="tab-models">Models</button>
-  <button class="settings-tab" onclick="showTab('cli-tools')" id="tab-cli-tools">CLI Tools</button>
+  <button class="settings-tab" onclick="showTab('ai-tools')" id="tab-ai-tools">AI Tools</button>
   <button class="settings-tab" onclick="showTab('profiles')" id="tab-profiles">Runtime Profiles</button>
 </div>
 
@@ -80,11 +79,20 @@
 {% endif %}
 </div>
 
-<!-- Models -->
-<div id="panel-models" class="settings-panel" style="display:none">
-<div class="table-card">
+<!-- AI Tools (merged: API providers + Subscription CLI + Host presence) -->
+<div id="panel-ai-tools" class="settings-panel" style="display:none">
+<p class="form-help" style="max-width:960px;margin:0 0 1.25rem;">
+  Moonwing runs scans two ways. <strong>API-based</strong> providers use a stored API key (billed per token, run in <strong>API</strong> execution mode).
+  <strong>Subscription CLI</strong> tools are logged-in command-line agents (Claude Code, Codex, Gemini CLI) the worker invokes directly (billed to your subscription plan, run in <strong>CLI</strong> execution mode).
+</p>
+
+<!-- Section 1: API-based providers / model registry -->
+<div class="table-card" style="margin-bottom:1.5rem;">
   <div class="table-card-header">
-    <h2>{{ ai_models|length }} model{{ 's' if ai_models|length != 1 }}</h2>
+    <div>
+      <h2>API providers &amp; models</h2>
+      <p class="form-help" style="margin:0.25rem 0 0;">{{ ai_models|length }} model{{ 's' if ai_models|length != 1 }} discovered from stored API keys. Enable a model to make it selectable for <strong>API</strong>-mode runs.</p>
+    </div>
     <div class="toolbar-actions">
       <form method="post" action="/settings/models/discover-provider" class="inline-form">
         <select name="provider">
@@ -127,16 +135,17 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty-state"><h3>No models discovered</h3><p>None discovered. Check settings or CLI login.</p></div>
+  <div class="empty-state"><h3>No models discovered</h3><p>None discovered. Add an API credential, then Discover — or check CLI login below.</p></div>
   {% endif %}
 </div>
-</div>
 
-<!-- CLI Tools -->
-<div id="panel-cli-tools" class="settings-panel" style="display:none">
-<div class="table-card">
+<!-- Section 2: Subscription CLI tools (logged-in agents in the worker container) -->
+<div class="table-card" style="margin-bottom:1.5rem;">
   <div class="table-card-header">
-    <h2>{{ cli_tools|length }} CLI tool{{ 's' if cli_tools|length != 1 }}</h2>
+    <div>
+      <h2>Subscription CLI tools</h2>
+      <p class="form-help" style="margin:0.25rem 0 0;">{{ cli_tools|length }} logged-in CLI agent{{ 's' if cli_tools|length != 1 }} detected inside the worker/API container. Used by <strong>CLI</strong>-mode runs; update them here.</p>
+    </div>
     <form method="post" action="/settings/cli-tools/check" class="inline-form cli-tool-check-form">
       <button type="submit" class="btn btn-sm cli-tool-check-button">
         <span class="button-spinner" aria-hidden="true"></span>
@@ -177,6 +186,14 @@
     </tbody>
   </table>
 </div>
+
+<!-- Section 3: Docker host presence (advanced) — only when host-probe mounts are configured -->
+{% if not host_scan.setup_required %}
+<details class="detail-card" style="max-width:960px;">
+  <summary style="cursor:pointer;font-weight:600;">Docker host presence (advanced)</summary>
+  {% include "_host_ai_tools.html" %}
+</details>
+{% endif %}
 </div>
 
 <!-- Runtime Profiles -->
@@ -220,6 +237,9 @@ function showTab(name) {
 }
 var params = new URLSearchParams(window.location.search);
 var tab = params.get('tab');
+// Old tabs 'models' and 'cli-tools' were merged into the 'ai-tools' tab.
+var TAB_ALIASES = { 'models': 'ai-tools', 'cli-tools': 'ai-tools' };
+if (tab && TAB_ALIASES[tab]) tab = TAB_ALIASES[tab];
 if (tab && document.getElementById('panel-' + tab)) showTab(tab);
 
 document.querySelectorAll('.cli-tool-update-form').forEach(function(form) {
